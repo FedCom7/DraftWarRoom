@@ -1,0 +1,59 @@
+<div id="view-myteam" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>La mia rosa · Sommo</h2><p>Roster reale letto da ESPN, incrociato con l'utilizzo 2026 (ESPN, poi Sleeper, poi nflverse) e 2025, i Next Gen Stats, la forza dell'attacco di ogni squadra NFL, gli infortuni e il calendario. L'obiettivo non è sapere chi ha fatto punti, ma chi <em>ne farà</em>: volume, ruolo e contesto.</p></div>
+  <div class="strip" id="mt-strip"></div>
+
+  <div class="an-grid" style="grid-template-columns:minmax(0,1.15fr) minmax(0,1fr)">
+    <div class="chartcard">
+      <h3>Formazione consigliata · settimana <span id="mt-wk">3</span></h3>
+      <p class="cn">Punti attesi: la <b>proiezione ufficiale ESPN di quella giornata</b> quando esiste, altrimenti il ritmo del 2026 mescolato con la stagionale e corretto per la difesa avversaria. Chi è in bye o fuori vale zero.</p>
+      <div style="overflow-x:auto"><table class="antable" id="mt-lineup"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Reparti: tu contro gli altri tre</h3>
+      <p class="cn">Somma delle proiezioni dei titolari di reparto in ogni roster della lega. Dice dove sei davvero forte e dove il waiver ti serve.</p>
+      <div style="overflow-x:auto"><table class="antable" id="mt-vs"></table></div>
+      <h3 style="margin-top:14px">Bye da coprire</h3>
+      <div id="mt-bye"></div>
+    </div>
+  </div>
+
+  <div class="chartcard" style="margin-top:10px">
+    <h3>Atteso contro reale</h3>
+    <p class="cn">Per ogni tuo giocatore: i punti a gara che la proiezione si aspettava e quelli veri del 2026. Il segmento è lo scarto; le due sole giornate giocate lo rendono rumoroso, ma i casi estremi vanno guardati.</p>
+    <div class="chartwrap" id="mt-chart"></div>
+    <div class="legend2"><span><i style="background:var(--k-muted)"></i>atteso</span><span><i style="background:var(--live)"></i>sopra le attese</span><span><i style="background:var(--offline)"></i>sotto</span></div>
+  </div>
+  <div class="chartcard" style="margin-top:10px">
+    <h3>Salute della rosa · chi sta rendendo e chi no</h3>
+    <p class="cn">“Atteso” è la proiezione stagionale ESPN divisa per 17. Il volume conta più dei punti: target share e corse per gara spiegano il rendimento futuro molto meglio dei touchdown già segnati.</p>
+    <div style="overflow-x:auto"><table class="antable" id="mt-roster"></table></div>
+  </div>
+
+  <div class="an-grid" style="margin-top:10px;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)">
+    <div class="chartcard">
+      <h3>Volume contro produzione</h3>
+      <p class="cn">Ogni punto è un giocatore libero: a destra chi ha volume, in alto chi sta già segnando. I nomi in alto a destra sono i veri candidati; in basso a destra ci sono quelli che il volume ce l'hanno ma non l'hanno ancora convertito, che spesso è il momento giusto per prenderli.</p>
+      <div class="chartwrap" id="wv-chart"></div>
+      <div class="legend2" id="wv-lg"></div>
+    </div>
+    <div class="chartcard">
+      <h3>Waiver consigliati per te</h3>
+      <p class="cn">Punteggio costruito su volume (target share, corse, snap), produzione 2026, forza dell'attacco, calendario delle prossime tre giornate, cambi di ruolo e infortuni davanti a loro — e pesato sui tuoi buchi di reparto.</p>
+      <div class="an-bar" style="margin:0 0 8px">
+        <div class="chips" id="mt-wpos"></div>
+        <label><input type="checkbox" id="mt-onlyfa" checked> Solo liberi nella lega</label>
+        <span class="sp" id="mt-winfo"></span>
+      </div>
+      <div style="overflow-x:auto;max-height:600px"><table class="antable" id="mt-waiver"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Da cui si può prescindere</h3>
+      <p class="cn">I tuoi giocatori con meno valore atteso: sono i posti liberi per un waiver. Un titolare non compare mai qui.</p>
+      <div style="overflow-x:auto"><table class="antable" id="mt-drop"></table></div>
+      <h3 style="margin-top:14px">Lettura della squadra</h3>
+      <div class="verdict2" style="border:0;padding:0"><ul id="mt-read"></ul></div>
+    </div>
+  </div>
+</div>
+</div>

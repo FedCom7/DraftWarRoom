@@ -1,0 +1,10 @@
+# rigenerabili: li ricrea la pipeline (in locale e nell'Action)
+data/raw/
+data/build/
+dist/
+web/index.html
+web/data/
+
+__pycache__/
+*.pyc
+.DS_Store

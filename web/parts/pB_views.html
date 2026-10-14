@@ -1,0 +1,76 @@
+<div id="view-value" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Value board · tier e drop</h2><p>Tutti i giocatori rilevanti ordinati per posizione e raggruppati in <b>tier</b>: un nuovo tier inizia dove la proiezione scende di colpo. I punti sono le proiezioni ESPN già convertite nello scoring di Topina; il VORP è calcolato sul replacement level di una lega da 4 team (QB 6°, RB/WR 14°, TE 5°, K e D/ST 4°).</p></div>
+  <div class="an-bar">
+    <div class="chips" id="vb-pos"></div>
+    <input type="search" id="vb-q" placeholder="Cerca giocatore" aria-label="Cerca giocatore">
+    <label><input type="checkbox" id="vb-avail"> Nascondi i draftati nella demo</label>
+    <label><input type="checkbox" id="vb-usage" checked> Mostra utilizzo 2025</label>
+    <span class="sp" id="vb-info"></span>
+  </div>
+  <div class="strip" id="vb-strip"></div>
+  <div class="tiercols" id="vb-cols"></div>
+</div>
+</div>
+
+<div id="view-scarcity" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Scarsità, VORP e piano dei turni</h2><p>Dove il valore si esaurisce prima: la curva mostra quanto si perde scendendo di una posizione nel ranking, e il replacement level dice dove finisce il vantaggio. Con 4 team i titolari richiesti sono pochi, quindi la scarsità vera sta solo dove gli slot sono molti (RB e WR con il FLEX).</p></div>
+  <div class="an-bar">
+    <label><input type="checkbox" id="sc-avail"> Considera solo i disponibili nella demo</label>
+    <span class="sp">Proiezioni ESPN · scoring Topina · replacement da <code>lineupSlotCounts</code> reali</span>
+  </div>
+  <div class="strip" id="sc-strip"></div>
+  <div class="an-grid">
+    <div class="chartcard">
+      <h3>Curva di valore per posizione</h3>
+      <p class="cn">Punti proiettati per rank posizionale. Il cerchio segna il replacement level della lega: sopra quella linea c'è vantaggio, sotto si pesca nei waiver.</p>
+      <div class="chartwrap" id="ch-curve"></div>
+      <div class="legend2" id="ch-curve-lg"></div>
+    </div>
+    <div class="chartcard">
+      <h3>Miglior VORP atteso ai tuoi 15 turni</h3>
+      <p class="cn">Stima basata sull'ordine di mercato (ADP): a ogni tuo turno, il VORP del miglior giocatore che ti aspetti ancora libero. Le barre gialle sono i turni in cui scegli due volte di fila.</p>
+      <div class="chartwrap" id="ch-plan"></div>
+      <div class="legend2"><span><i style="background:var(--k-y)"></i>turno doppio (fine/inizio round)</span><span><i style="background:var(--k-me)"></i>turno singolo</span></div>
+    </div>
+  </div>
+  <div class="an-grid" style="margin-top:10px">
+    <div class="chartcard">
+      <h3>Indice di scarsità per posizione</h3>
+      <p class="cn">Quanti giocatori restano sopra il replacement, quanto vale il migliore rispetto a quella soglia e dove cade il prossimo drop.</p>
+      <div style="overflow-x:auto"><table class="antable" id="sc-table"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Cosa prendere e quando</h3>
+      <p class="cn">Per ognuno dei tuoi turni: la posizione con il VORP atteso più alto e i nomi più probabili. Serve a decidere in anticipo l'ordine dei reparti, non a seguirlo alla lettera.</p>
+      <div style="overflow-x:auto;max-height:430px"><table class="antable" id="sc-plan"></table></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="view-profiles" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Profili giocatori</h2><p>Per capire chi <em>probabilmente</em> renderà, non chi ha reso: volume (target share, carichi, snap), contesto (depth chart, reparto), età e coerenza tra proiezione 2026 e produzione 2025. Le statistiche 2026 prendono ESPN quando c'è, poi Sleeper (snap, red zone), poi nflverse (quota target, Next Gen Stats); età e depth chart da Sleeper, proiezioni da ESPN, ADP da ESPN e FFC.</p></div>
+  <div class="prof">
+    <div class="plist">
+      <div class="ph"><input type="search" id="pf-q" placeholder="Cerca" aria-label="Cerca" style="width:100%"><div class="chips" id="pf-pos"></div></div>
+      <div class="pl" id="pf-list"></div>
+    </div>
+    <div id="pf-card"></div>
+  </div>
+</div>
+</div>
+
+<div id="view-depth" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Reparti NFL · situazione squadre</h2><p>Il fantasy premia il contesto: un attacco che segna molto distribuisce punti a tutti, un backfield diviso li dimezza. Per ogni squadra NFL: proiezione totale dei suoi giocatori rilevanti, gerarchia per reparto e quanta parte del reparto è concentrata sul primo nome.</p></div>
+  <div class="an-bar">
+    <label>Ordina per <select id="dp-sort"><option value="tot">Proiezione totale attacco</option><option value="QB">QB</option><option value="RB">RB</option><option value="WR">WR</option><option value="TE">TE</option><option value="bye">Bye week</option></select></label>
+    <label><input type="checkbox" id="dp-avail"> Solo giocatori disponibili nella demo</label>
+    <span class="sp">Concentrazione = quota del reparto sul primo giocatore proiettato</span>
+  </div>
+  <div class="teams" id="dp-teams"></div>
+</div>
+</div>

@@ -1,0 +1,372 @@
+<script>
+(()=>{
+'use strict';
+const D=window.DWR,A=window.DWR2;
+const {TBY,MY,esc}=D;const {POSC,ALLP,chips,n0,n1,sv,R}=A;
+const $=(s,r=document)=>r.querySelector(s);
+const RAW=__POOL__, TEAMCTX=__TEAMCTX__, SCHED=window.DWR_SCHED, FPA=window.DWR_FPA;
+/* quanto è vecchia questa fotografia: la pagina è statica, i dati sono dentro */
+window.DWR_AGE=()=>{
+  const t=Date.parse((window.TOPINA.generatedAt||'')+'Z')||Date.parse(window.TOPINA.generatedAt||'');
+  if(!t)return{ms:Infinity,txt:'data sconosciuta',fresh:false};
+  const ms=Date.now()-t, m=Math.round(ms/60000);
+  const txt=m<1?'meno di un minuto fa':m<60?`${m} minuti fa`:m<1440?`${Math.round(m/60)} ore fa`:`${Math.round(m/1440)} giorni fa`;
+  return{ms,txt,fresh:ms<15*60*1000,when:new Date(t)};
+};
+const TOP=window.TOPINA, GS=TOP.map, ADV26=TOP.adv26, ADV25=TOP.adv25, INJR=TOP.inj, TMS=TOP.teams;
+const adv=(p,y)=>{const g=GS[p.id];return g?((y===25?ADV25:ADV26)[g]||null):null};
+const injOf=p=>{const g=GS[p.id];return g?(INJR[g]||null):null};
+const tm=p=>TMS[p.nfl]||null;
+const K=['id','name','pos','nfl','rank','adp','proj','bye','sd','inj','age','exp','dc',
+ 'g25','ppg25','tgt25','tsh25','car25','rtd25','rutd25','snap25',
+ 'g26','ppg26','tgt26','tsh26','car26','rtd26','rutd26','snap26','own','pct','act25','act26','started'];
+const POOL=RAW.map(r=>{const o={};K.forEach((k,i)=>o[k]=r[i]);o.exp26=o.proj/17;
+  if(o.pos==='K'||o.pos==='DST'){o.ppg25=o.ppg26=o.tsh26=o.tsh25=o.tgt26=o.car26=o.snap26=null}   // nflverse non copre K e D/ST
+  return o});
+const BYID=new Map(POOL.map(p=>[p.id,p]));
+/* la parte viva porta chi è in quale roster adesso: aggiorna il pool senza ricaricare */
+window.DWR_OWN=m=>{if(!m)return;const set=p=>{p.own=m[p.id]||0};POOL.forEach(set);if(window.DWR&&window.DWR.PLAYERS)window.DWR.PLAYERS.forEach(set)};
+/* la settimana arriva dal dato ESPN, non è scritta a mano */
+const WEEK=(TOP && TOP.week) || 1, NEXT3=[WEEK,WEEK+1,WEEK+2];
+const f2=v=>v==null?'—':v.toFixed(2);
+const pct=v=>v==null?'—':n1(v)+'%';
+const arrow=d=>d>0.12?'<span style="color:var(--live)">▲</span>':d<-0.12?'<span style="color:var(--offline)">▼</span>':'<span style="color:var(--k-muted)">=</span>';
+
+/* ---------- contesto: attacco, QB titolare, concorrenza, calendario ---------- */
+const epaRank=Object.entries(TEAMCTX).sort((a,b)=>b[1].epa-a[1].epa).map(e=>e[0]);
+/* rank d'attacco: punti segnati per gara, dal giro giornaliero di Topina; EPA come riserva */
+const teamRank=t=>((TMS[t]||{}).oRank)||(epaRank.indexOf(t)+1);
+const qbOf=t=>POOL.filter(p=>p.nfl===t&&p.pos==='QB').sort((a,b)=>b.proj-a.proj)[0]||null;
+const OUT=['O','IR','D','SUS'];
+function ahead(p){  // compagni di reparto proiettati davanti a lui
+  return POOL.filter(q=>q.nfl===p.nfl&&q.pos===p.pos&&q.id!==p.id&&q.proj>p.proj).sort((a,b)=>b.proj-a.proj);
+}
+function matchup(p,week){
+  const s=SCHED[p.nfl];if(!s)return null;
+  const o=s.opp[week];if(!o)return null;
+  const ab=o.replace('@','');const f=FPA[ab];
+  const key=['QB','RB','WR','TE'].includes(p.pos)?p.pos:'QB';
+  return{opp:o,f:f&&f[key]?f[key]:1}
+}
+function sos3(p){
+  const v=NEXT3.map(w=>matchup(p,w)).filter(Boolean);
+  return v.length?v.reduce((a,b)=>a+b.f,0)/v.length:null;
+}
+/* proiezione ufficiale ESPN della giornata, quando c'è; altrimenti il ritmo
+   2026 mescolato con la stagionale */
+const PW=()=>window.TOPINA.projWeeks||{};
+function espnWeek(p,week){
+  const r=PW()[String(p.id)];
+  const v=r?r[String(week||WEEK)]:null;
+  return v==null?null:v;
+}
+function basePPG(p,week){
+  const off=espnWeek(p,week);
+  if(off!=null)return off;
+  const w=Math.min(0.55,(p.g26||0)*0.28);
+  return (1-w)*p.exp26+w*(p.ppg26!=null?p.ppg26:p.exp26);
+}
+function weekPts(p,week){
+  if(p.bye===week)return 0;
+  if(OUT.includes(p.inj))return p.inj==='D'?basePPG(p,week)*0.3:0;
+  const base=basePPG(p,week);
+  // se la proiezione è già quella ufficiale di ESPN, tiene conto della difesa da sé
+  if(espnWeek(p,week)!=null)return base;
+  const m=matchup(p,week);
+  return base*(m?1+(m.f-1)*0.35:1);
+}
+
+/* ---------- rosa ---------- */
+const mine=()=>POOL.filter(p=>p.own===MY).sort((a,b)=>b.proj-a.proj);
+const SLOTS=[['QB',['QB']],['RB',['RB']],['RB',['RB']],['RB/WR',['RB','WR']],['WR',['WR']],['WR',['WR']],['TE',['TE']],['D/ST',['DST']],['K',['K']]];
+const lineup=week=>lineupOf(MY,week);
+function lineupOf(teamId,week){
+  const pl=POOL.filter(p=>p.own===teamId).map(p=>({p,pts:weekPts(p,week)})).sort((a,b)=>b.pts-a.pts);
+  const used=new Set(),rows=[];
+  SLOTS.forEach(([lab,el])=>{
+    const x=pl.find(y=>!used.has(y.p.id)&&el.includes(y.p.pos));
+    if(x)used.add(x.p.id);
+    rows.push({lab,x})});
+  const bench=pl.filter(y=>!used.has(y.p.id));
+  return{rows,bench}
+}
+function healthTags(p){
+  const t=[];
+  const d=p.ppg26!=null&&p.exp26?(p.ppg26-p.exp26)/p.exp26:null;
+  if(d!=null&&d>=0.25)t.push('<span class="tag2 good">oltre le attese</span>');
+  else if(d!=null&&d<=-0.3)t.push('<span class="tag2 bad">sotto le attese</span>');
+  if(p.tsh26&&p.tsh25){
+    if(p.tsh26-p.tsh25>=4)t.push('<span class="tag2 acc">target in crescita</span>');
+    else if(p.tsh26-p.tsh25<=-4)t.push('<span class="tag2 warn">target in calo</span>');
+  }
+  if(p.car26!=null&&p.car25!=null&&p.car26-p.car25>=4)t.push('<span class="tag2 acc">più corse</span>');
+  if(p.snap26!=null&&p.snap26>=85)t.push('<span class="tag2 good">snap quasi pieni</span>');
+  if(p.snap26!=null&&p.snap26<55&&p.pos!=='DST'&&p.pos!=='K')t.push('<span class="tag2 warn">ruolo a rotazione</span>');
+  const ij=injOf(p);
+  if(p.inj||ij&&ij.s)t.push(`<span class="tag2 bad">${p.inj||ij.s}${ij&&ij.i?' · '+esc(ij.i):''}</span>`);
+  else if(ij&&ij.pr&&/Limited|Did Not/i.test(ij.pr))t.push(`<span class="tag2 warn">allenamento ${/Did Not/i.test(ij.pr)?'saltato':'ridotto'}${ij.i?' · '+esc(ij.i):''}</span>`);
+  const a=adv(p,26),T=tm(p);
+  if(a&&a.rushShare>=0.6)t.push(`<span class="tag2 good">${n0(a.rushShare*100)}% delle corse</span>`);
+  if(a&&a.wopr>=0.6)t.push('<span class="tag2 good">WOPR alto</span>');
+  if(T&&T.td>=2.6)t.push('<span class="tag2 good">squadra che segna molto</span>');
+  const qb=qbOf(p.nfl);
+  if(['WR','TE','RB'].includes(p.pos)&&qb&&OUT.includes(qb.inj))t.push(`<span class="tag2 bad">QB ${esc(qb.name.split(' ').slice(-1)[0])} ${qb.inj}</span>`);
+  const r=teamRank(p.nfl);
+  if(r&&r<=8)t.push('<span class="tag2 good">attacco top 8</span>');
+  else if(r&&r>=25)t.push('<span class="tag2 warn">attacco debole</span>');
+  const s=sos3(p);
+  if(s!=null&&s>=1.08)t.push('<span class="tag2 good">calendario facile</span>');
+  else if(s!=null&&s<=0.92)t.push('<span class="tag2 warn">calendario duro</span>');
+  const ah=ahead(p);
+  if(ah.length&&['RB','WR','TE'].includes(p.pos)&&ah[0].proj>p.proj*1.25)t.push(`<span class="tag2 warn">dietro a ${esc(ah[0].name.split(' ').slice(-1)[0])}</span>`);
+  return t.join('')
+}
+/* ---------- bisogni di reparto ---------- */
+function leagueByPos(){
+  const out={};[1,2,3,4].forEach(t=>{
+    const pl=POOL.filter(p=>p.own===t);
+    out[t]={};['QB','RB','WR','TE','K','DST'].forEach(pos=>{
+      const n={QB:1,RB:3,WR:3,TE:1,K:1,DST:1}[pos];
+      out[t][pos]=pl.filter(p=>p.pos===pos).sort((a,b)=>b.proj-a.proj).slice(0,n).reduce((s,p)=>s+p.proj,0)});
+  });
+  return out
+}
+function needs(){
+  const lg=leagueByPos(),me=lg[MY],out={};
+  ['QB','RB','WR','TE','K','DST'].forEach(pos=>{
+    const others=[1,2,3,4].filter(t=>t!==MY).map(t=>lg[t][pos]);
+    const avg=others.reduce((a,b)=>a+b,0)/others.length||1;
+    out[pos]={mine:me[pos],avg,ratio:me[pos]/avg}});
+  return out
+}
+
+/* ---------- waiver su misura ---------- */
+const MEDP={},MEDV={};
+['QB','RB','WR','TE','K','DST'].forEach(pos=>{
+  const l=POOL.filter(p=>p.pos===pos).sort((a,b)=>b.proj-a.proj).slice(0,24);
+  MEDP[pos]=l.length?l[Math.floor(l.length/2)].proj||1:1;
+  const v=l.map(p=>(p.tgt26||0)*1.6+(p.car26||0)).sort((a,b)=>a-b);
+  MEDV[pos]=v.length?Math.max(1,v[Math.floor(v.length/2)]):1});
+function waiverScore(p,nd){
+  const a=adv(p,26),T=tm(p);
+  const share=a?Math.max((a.targetShare||0)*2.4,(a.rushShare||0)*1.9):0;   // quota reale del reparto
+  const vol=((p.tgt26||0)*1.6+(p.car26||0))/MEDV[p.pos]+share;
+  const prod=(p.ppg26||0)/Math.max(1,MEDP[p.pos]/17);
+  const snap=(p.snap26!=null?p.snap26:(p.snap25||0))/100;
+  const ctx=1+(17-teamRank(p.nfl))/34+(T&&T.td>=2.6?0.08:0);   // attacco forte e che segna molto
+  const s3=sos3(p),cal=s3==null?1:1+(s3-1)*0.5;
+  const trend=(p.tsh26!=null&&p.tsh25!=null?(p.tsh26-p.tsh25)/6:0)+(p.car26!=null&&p.car25!=null?(p.car26-p.car25)/8:0);
+  const ah=ahead(p);
+  const role=(p.dc===1?0.35:0)+(ah.length&&OUT.includes(ah[0].inj)?0.9:0)+(ah.length===0&&['RB','WR','TE'].includes(p.pos)?0.25:0);
+  const qb=qbOf(p.nfl);
+  const qbPen=(['WR','TE'].includes(p.pos)&&qb&&OUT.includes(qb.inj))?-0.6:0;
+  const injPen=OUT.includes(p.inj)?-1.4:(p.inj==='Q'?-0.25:0);
+  const tr=(window.TOPINA.trending||{})[p.id]||{};
+  const hype=tr.add?Math.min(0.5,tr.add/400000):0;        // quanto lo stanno prendendo altrove
+  const need=nd[p.pos]?Math.max(0.55,Math.min(1.6,1.45-nd[p.pos].ratio*0.55)):1;
+  const raw=(1.5*vol+1.1*prod+0.7*snap+0.9*role+0.6*trend+hype+qbPen+injPen)*ctx*cal;
+  return{score:raw*need,vol,prod,role,trend,cal,need,ah,qb,s3}
+}
+function waiverReasons(p,w){
+  const r=[];const a=adv(p,26)||adv(p,25),T=tm(p),ij=injOf(p);
+  if(a&&a.rushShare>=0.55)r.push(`${n0(a.rushShare*100)}% delle corse della squadra`);
+  if(a&&a.wopr>=0.55)r.push(`WOPR ${n1(a.wopr*100)/100}: target e air yards concentrati su di lui`);
+  if(a&&a.epaPerGame>=1)r.push('EPA per gara positiva');
+  if(T&&T.oRank<=10)r.push(`attacco ${T.oRank}° per punti segnati (${T.ppg} a gara)`);
+  if(T&&T.td>=2.6)r.push(`${n1(T.td)} touchdown a gara`);
+  if(ij&&ij.s)r.push(`bollettino: ${ij.s}${ij.i?' ('+esc(ij.i)+')':''}`);
+  if(p.tsh26>=22)r.push(`target share ${n1(p.tsh26)}%`);
+  else if(p.tsh26>=15)r.push(`${n1(p.tsh26)}% dei target`);
+  if(p.car26>=12)r.push(`${n1(p.car26)} corse a gara`);
+  if(p.snap26>=75)r.push(`${n0(p.snap26)}% snap`);
+  if(p.tsh26!=null&&p.tsh25!=null&&p.tsh26-p.tsh25>=4)r.push(`target +${n1(p.tsh26-p.tsh25)} punti rispetto al 2025`);
+  if(w.ah.length&&OUT.includes(w.ah[0].inj))r.push(`${esc(w.ah[0].name.split(' ').slice(-1)[0])} è ${w.ah[0].inj}: eredita il ruolo`);
+  if(!w.ah.length&&['RB','WR','TE'].includes(p.pos))r.push('primo del suo reparto per proiezione');
+  const tr=teamRank(p.nfl);
+  if(tr<=8)r.push(`attacco ${tr}° per EPA`);
+  else if(tr>=26)r.push(`attacco ${tr}°: contesto povero`);
+  if(w.s3!=null&&w.s3>=1.08)r.push(`calendario morbido nelle prossime 3 (${f2(w.s3)})`);
+  if(w.s3!=null&&w.s3<=0.92)r.push(`calendario duro nelle prossime 3 (${f2(w.s3)})`);
+  if(p.rtd26+p.rutd26>=2)r.push(`${p.rtd26+p.rutd26} TD già segnati`);
+  if(w.qb&&OUT.includes(w.qb.inj)&&['WR','TE'].includes(p.pos))r.push(`ma il QB titolare è ${w.qb.inj}`);
+  if(p.inj)r.push(`stato fisico ${p.inj}`);
+  if(p.pct!=null&&p.pct<25)r.push(`posseduto nel ${n0(p.pct)}% delle leghe ESPN`);
+  const tr2=(window.TOPINA.trending||{})[p.id];
+  if(tr2&&tr2.add>=50000)r.push(`preso da ${Math.round(tr2.add/1000)} mila squadre nelle ultime 24 ore`);
+  return r
+}
+
+/* ---------- render ---------- */
+const WS={pos:'ALL',fa:true};
+function renderMyTeam(){
+  const ros=mine(),nd=needs(),{rows,bench}=lineup(WEEK);
+  const totW=rows.reduce((s,r)=>s+(r.x?r.x.pts:0),0);
+  const holes=Object.entries(nd).filter(([p,v])=>v.ratio<0.9).map(([p])=>p);
+  const byeSoon=[...new Set(ros.filter(p=>p.bye&&p.bye>=WEEK).map(p=>p.bye))].sort((a,b)=>a-b);
+  $('#mt-wk').textContent=WEEK;
+  const offN=ros.filter(p=>espnWeek(p)!=null).length;
+  const AGE=window.DWR_AGE();
+  $('#mt-strip').innerHTML=`
+    <div class="sc" style="border-top-color:${AGE.fresh?'var(--live)':'var(--delayed)'}"><h4>Dati</h4>
+      <div class="kv"><span>aggiornati</span><b>${AGE.txt}</b></div>
+      <div class="kv"><span>settimana</span><b>${WEEK}</b></div>
+      <div class="verd">${window.DWR_LIVE?'Si aggiorna da solo ogni 30 secondi.':AGE.fresh?'Fotografia recente.':'Copia statica: i punti si aggiornano solo rigenerando i dati.'}</div></div>`+`
+    <div class="sc"><h4>Formazione sett. ${WEEK}</h4><div class="kv"><span>punti attesi</span><b>${n1(totW)}</b></div>
+      <div class="kv"><span>titolari indisponibili</span><b>${rows.filter(r=>r.x&&r.x.pts===0).length}</b></div>
+      <div class="verd">${totW>=110?'Formazione competitiva.':'Serve un aiuto dai waiver: la formazione è sotto il livello della lega.'}</div></div>
+    <div class="sc"><h4>Rosa</h4><div class="kv"><span>giocatori</span><b>${ros.length}/15+IR</b></div>
+      <div class="kv"><span>proiezione totale</span><b>${n0(ros.reduce((s,p)=>s+p.proj,0))}</b></div>
+      <div class="verd">${ros.filter(p=>p.inj).length?`${ros.filter(p=>p.inj).length} giocatori con problemi fisici.`:'Nessun problema fisico segnalato.'}</div></div>
+    <div class="sc"><h4>Reparti deboli</h4><div class="kv"><span>sotto la media lega</span><b>${holes.length?holes.join(', '):'nessuno'}</b></div>
+      <div class="kv"><span>reparto più forte</span><b>${Object.entries(nd).sort((a,b)=>b[1].ratio-a[1].ratio)[0][0]}</b></div>
+      <div class="verd">Il punteggio dei waiver è pesato su questi buchi.</div></div>
+    <div class="sc"><h4>Bye in arrivo</h4><div class="kv"><span>settimane</span><b>${byeSoon.slice(0,4).join(', ')||'—'}</b></div>
+      <div class="kv"><span>peggiore</span><b>${(()=>{const c={};ros.forEach(p=>{if(p.bye>=WEEK)c[p.bye]=(c[p.bye]||0)+1});const e=Object.entries(c).sort((a,b)=>b[1]-a[1])[0];return e?`sett. ${e[0]} · ${e[1]} giocatori`:'—'})()}</b></div>
+      <div class="verd">Con 6 posti in panchina due bye pesanti si coprono, tre no.</div></div>`;
+
+  $('#mt-lineup').innerHTML=`<thead><tr><th>Slot</th><th>Giocatore</th><th>Avversario</th><th class="num">Difesa</th><th class="num">Attesi</th><th>Note</th></tr></thead><tbody>`+
+    rows.map(r=>{
+      if(!r.x)return`<tr><td>${r.lab}</td><td class="e" style="color:var(--offline)">slot scoperto</td><td>—</td><td class="num">—</td><td class="num">0</td><td></td></tr>`;
+      const p=r.x.p,m=matchup(p,WEEK);
+      return`<tr><td><b>${r.lab}</b></td><td data-pid="${p.id}"><span class="pos pos-${p.pos}">${p.pos}</span> ${esc(p.name)} <span style="color:var(--k-muted)">${p.nfl}</span></td>
+        <td>${p.bye===WEEK?'<span style="color:var(--delayed)">bye</span>':(m?esc(m.opp):'—')}</td>
+        <td class="num" style="color:${m&&m.f>=1.05?'var(--live)':m&&m.f<=0.95?'var(--offline)':'var(--k-muted)'}">${m?f2(m.f):'—'}</td>
+        <td class="num"><b>${n1(r.x.pts)}</b></td><td>${p.inj?`<span class="tag2 bad">${p.inj}</span>`:''}${p.bye===WEEK?'<span class="tag2 warn">in bye</span>':''}</td></tr>`}).join('')+
+    `<tr><td colspan="4" style="color:var(--k-muted)">Panchina</td><td class="num" style="color:var(--k-muted)">${n1(bench.reduce((s,b)=>s+b.pts,0))}</td><td></td></tr>`+
+    bench.map(b=>`<tr><td style="color:var(--k-muted)">BE</td><td data-pid="${b.p.id}" style="color:var(--k-muted)"><span class="pos pos-${b.p.pos}">${b.p.pos}</span> ${esc(b.p.name)}</td><td colspan="2"></td><td class="num" style="color:var(--k-muted)">${n1(b.pts)}</td><td></td></tr>`).join('')+'</tbody>';
+
+  const lg=leagueByPos();
+  $('#mt-vs').innerHTML=`<thead><tr><th>Reparto</th><th class="num">Tu</th>${[1,2,4].map(t=>`<th class="num">${esc(TBY.get(t).abbr)}</th>`).join('')}<th>Posizione</th></tr></thead><tbody>`+
+    ['QB','RB','WR','TE','DST','K'].map(pos=>{
+      const vals=[1,2,3,4].map(t=>lg[t][pos]);const mineV=lg[MY][pos];
+      const rank=vals.filter(v=>v>mineV).length+1;
+      return`<tr class="${rank===1?'mine':''}"><td><span class="pos pos-${pos}">${pos}</span></td><td class="num"><b>${n0(mineV)}</b></td>
+        ${[1,2,4].map(t=>`<td class="num" style="color:var(--k-muted)">${n0(lg[t][pos])}</td>`).join('')}
+        <td style="color:${rank===1?'var(--live)':rank>=3?'var(--offline)':'var(--k-muted)'}">${rank}° su 4</td></tr>`}).join('')+'</tbody>';
+
+  const byeMap={};ros.forEach(p=>{if(p.bye)(byeMap[p.bye]=byeMap[p.bye]||[]).push(p)});
+  $('#mt-bye').innerHTML=Object.keys(byeMap).sort((a,b)=>a-b).map(w=>{
+    const pl=byeMap[w],st=pl.filter(p=>lineup(+w).rows.every(r=>!r.x||r.x.p.id!==p.id));
+    return`<div class="mrow" style="grid-template-columns:86px 1fr auto"><span class="l">Sett. ${w}</span>
+      <span style="font-size:11.5px;color:var(--k-muted)">${pl.map(p=>`<span class="pos pos-${p.pos}" style="margin-right:3px">${p.pos}</span>${esc(p.name.split(' ').slice(-1)[0])}`).join(' · ')}</span>
+      <span class="v" style="color:${pl.length>=4?'var(--offline)':pl.length>=3?'var(--delayed)':'var(--k-muted)'}">${pl.length}</span></div>`}).join('');
+
+  $('#mt-roster').innerHTML=`<thead><tr><th>Giocatore</th><th>Pos</th><th class="num">Atteso/g</th><th class="num">Reale '26</th><th class="num">Δ</th><th class="num">Tgt/g</th><th class="num">Tgt share</th><th class="num">Quota corse</th><th class="num">Snap</th><th class="num">TD</th><th class="num">SOS 3</th><th>Segnali</th></tr></thead><tbody>`+
+    ros.map(p=>{
+      const a26=adv(p,26);
+      const d=p.ppg26!=null&&p.exp26?(p.ppg26-p.exp26)/p.exp26:null;
+      const s=sos3(p);
+      return`<tr><td data-pid="${p.id}"><b>${esc(p.name)}</b> <span style="color:var(--k-muted)">${p.nfl}${p.bye?' · bye '+p.bye:''}</span></td>
+        <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
+        <td class="num">${n1(p.exp26)}</td><td class="num"><b>${p.ppg26!=null?n1(p.ppg26):'—'}</b></td>
+        <td class="num">${d==null?'—':arrow(d)+' '+(d>0?'+':'')+n0(d*100)+'%'}</td>
+        <td class="num">${p.tgt26!=null?n1(p.tgt26):(a26&&a26.tgtPerGame!=null?n1(a26.tgtPerGame):'—')}</td>
+        <td class="num">${p.tsh26?pct(p.tsh26):(a26&&a26.targetShare?pct(a26.targetShare*100):'—')}</td>
+        <td class="num">${a26&&a26.rushShare>0.02?pct(a26.rushShare*100):(p.car26?n1(p.car26)+' c/g':'—')}</td>
+        <td class="num">${p.snap26!=null?n0(p.snap26)+'%':(a26&&a26.snapPct!=null?n0(a26.snapPct*100)+'%':'—')}</td>
+        <td class="num">${(p.rtd26||0)+(p.rutd26||0)}</td>
+        <td class="num" style="color:${s>=1.05?'var(--live)':s<=0.95?'var(--offline)':'var(--k-muted)'}">${f2(s)}</td>
+        <td>${healthTags(p)}</td></tr>`}).join('')+'</tbody>';
+
+  deltaChart(ros);
+  renderWaiverList(nd);
+
+  const startersIds=new Set(rows.filter(r=>r.x).map(r=>r.x.p.id));
+  const stash=ros.filter(p=>['O','IR'].includes(p.inj));
+  const drop=ros.filter(p=>!startersIds.has(p.id)&&!['O','IR'].includes(p.inj)).map(p=>({p,v:basePPG(p)})).sort((a,b)=>a.v-b.v).slice(0,6);
+  $('#mt-drop').innerHTML=`<thead><tr><th>Giocatore</th><th class="num">Valore/g</th><th>Perché</th></tr></thead><tbody>`+
+    drop.map(x=>{const p=x.p,ah=ahead(p);
+      const why=[p.inj?`fuori (${p.inj})`:'',ah.length>1?`terzo nel reparto ${p.pos} dei ${p.nfl}`:'',p.snap26!=null&&p.snap26<50?'snap sotto il 50%':'',teamRank(p.nfl)>=26?'attacco fra i peggiori':''].filter(Boolean);
+      return`<tr><td data-pid="${p.id}">${esc(p.name)} <span class="pos pos-${p.pos}">${p.pos}</span></td><td class="num">${n1(x.v)}</td><td style="color:var(--k-muted)">${why.join(' · ')||'solo riserva'}</td></tr>`}).join('')+
+    (stash.length?`<tr><td colspan="3" style="color:var(--delayed);white-space:normal">Non tagliare ${stash.map(p=>esc(p.name)+' ('+p.inj+')').join(', ')}: sono infortunati ma valgono più di qualsiasi waiver. Usa lo slot IR dove possibile.</td></tr>`:'')+'</tbody>';
+
+  const read=[];
+  const best=Object.entries(nd).sort((a,b)=>b[1].ratio-a[1].ratio)[0],worst=Object.entries(nd).sort((a,b)=>a[1].ratio-b[1].ratio)[0];
+  read.push(`Il tuo reparto migliore è <b>${best[0]}</b> (${n0(best[1].ratio*100)}% della media degli altri tre), il più debole <b>${worst[0]}</b> (${n0(worst[1].ratio*100)}%).`);
+  const over=ros.filter(p=>p.ppg26!=null&&p.exp26&&(p.ppg26-p.exp26)/p.exp26>=0.25);
+  const under=ros.filter(p=>p.ppg26!=null&&p.exp26&&(p.ppg26-p.exp26)/p.exp26<=-0.3);
+  if(over.length)read.push(`Stanno rendendo sopra le attese: ${over.map(p=>esc(p.name)).join(', ')}. Con due sole giornate è presto per fidarsi: guarda il volume, non i punti.`);
+  if(under.length)read.push(`Sotto le attese: ${under.map(p=>esc(p.name)).join(', ')}. Da tagliare solo se scende anche il volume.`);
+  const injured=ros.filter(p=>p.inj);
+  if(injured.length)read.push(`Problemi fisici: ${injured.map(p=>`${esc(p.name)} (${p.inj})`).join(', ')}.`);
+  const qbIssues=ros.filter(p=>['WR','TE','RB'].includes(p.pos)&&(()=>{const q=qbOf(p.nfl);return q&&OUT.includes(q.inj)})());
+  if(qbIssues.length)read.push(`Attenzione al quarterback: ${qbIssues.map(p=>esc(p.name)).join(', ')} giocano con il titolare indisponibile.`);
+  const hardCal=ros.filter(p=>{const s=sos3(p);return s!=null&&s<=0.92});
+  if(hardCal.length)read.push(`Calendario duro nelle prossime tre giornate per ${hardCal.map(p=>esc(p.name)).join(', ')}.`);
+  read.push('In una lega da quattro il pool libero è profondo: un waiver con volume in crescita vale più di un titolare famoso in calo.');
+  $('#mt-read').innerHTML=read.map(t=>`<li>${t}</li>`).join('');
+}
+/* dumbbell: atteso contro reale, un segmento per giocatore */
+function deltaChart(ros){
+  const rows=ros.filter(p=>p.ppg26!=null&&p.exp26).sort((a,b)=>(b.ppg26-b.exp26)-(a.ppg26-a.exp26));
+  if(!rows.length){$('#mt-chart').innerHTML='';return}
+  const W=880,L=150,R=56,T=10,rowH=22,H=T+rows.length*rowH+24;
+  const max=Math.max(...rows.flatMap(p=>[p.exp26,p.ppg26]))*1.05;
+  const x=v=>L+v/max*(W-L-R);
+  let s='';
+  [0,max/3,max*2/3,max].forEach(v=>{s+=`<line x1="${x(v).toFixed(1)}" y1="${T-4}" x2="${x(v).toFixed(1)}" y2="${H-24}" stroke="#1E2833"/>`+
+    `<text x="${x(v).toFixed(1)}" y="${H-10}" fill="#7C8996" font-size="9" text-anchor="middle">${n0(v)}</text>`});
+  rows.forEach((p,i)=>{
+    const y=T+i*rowH+rowH/2,a=x(p.exp26),b=x(p.ppg26),up=p.ppg26>=p.exp26;
+    s+=`<text x="${L-8}" y="${y+3.5}" fill="#B8C3CE" font-size="11" text-anchor="end" data-pid="${p.id}">${esc(p.name)}</text>`;
+    s+=`<line x1="${a.toFixed(1)}" y1="${y}" x2="${b.toFixed(1)}" y2="${y}" stroke="${up?'var(--live)':'var(--offline)'}" stroke-width="3" stroke-linecap="round" opacity=".85"><title>${esc(p.name)}: atteso ${n1(p.exp26)}, reale ${n1(p.ppg26)}</title></line>`;
+    s+=`<circle cx="${a.toFixed(1)}" cy="${y}" r="4" fill="#0A0E13" stroke="#8593A2" stroke-width="2"/>`;
+    s+=`<circle cx="${b.toFixed(1)}" cy="${y}" r="4.5" fill="${up?'var(--live)':'var(--offline)'}"/>`;
+    s+=`<text x="${W-R+8}" y="${y+3.5}" fill="${up?'var(--live)':'var(--offline)'}" font-size="10.5" font-weight="600">${up?'+':''}${n1(p.ppg26-p.exp26)}</text>`;
+  });
+  $('#mt-chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Atteso contro reale">${s}</svg>`;
+}
+/* scatter: volume contro produzione fra i giocatori liberi */
+function volumeChart(list){
+  const pts=list.filter(x=>x.p.ppg26!=null&&(x.p.tgt26||x.p.car26)).slice(0,60);
+  if(!pts.length){$('#wv-chart').innerHTML='<p class="cn">Nessun dato di utilizzo disponibile.</p>';return}
+  const W=560,H=300,L=42,R=16,T=12,B=34;
+  const vol=p=>(p.tgt26||0)*1.6+(p.car26||0);
+  const mx=Math.max(...pts.map(x=>vol(x.p)))*1.08,my=Math.max(...pts.map(x=>x.p.ppg26))*1.08;
+  const X=v=>L+v/mx*(W-L-R),Y=v=>H-B-v/my*(H-B-T);
+  let s='';
+  for(let i=0;i<=3;i++){const v=my*i/3;s+=`<line x1="${L}" y1="${Y(v)}" x2="${W-R}" y2="${Y(v)}" stroke="#1E2833"/><text x="${L-6}" y="${Y(v)+3}" fill="#7C8996" font-size="9" text-anchor="end">${n0(v)}</text>`}
+  for(let i=0;i<=3;i++){const v=mx*i/3;s+=`<text x="${X(v)}" y="${H-B+14}" fill="#7C8996" font-size="9" text-anchor="middle">${n0(v)}</text>`}
+  s+=`<text x="${(W+L)/2-20}" y="${H-6}" fill="#7C8996" font-size="9" text-anchor="middle">volume per gara (target pesati + corse)</text>`;
+  s+=`<text x="${W-R}" y="${T+2}" fill="#7C8996" font-size="9" text-anchor="end">asse verticale: punti a gara 2026</text>`;
+  pts.forEach(x=>{
+    const p=x.p,cx=X(vol(p)),cy=Y(p.ppg26);
+    s+=`<circle cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" r="${p.own?3.5:5}" fill="${p.own?'#3A4654':POSC[p.pos]}" opacity="${p.own?.5:.9}" data-pid="${p.id}"><title>${esc(p.name)} (${p.pos}, ${p.nfl}): ${n1(p.ppg26)} punti a gara, volume ${n1(vol(p))}</title></circle>`;
+  });
+  pts.filter(x=>!x.p.own).sort((a,b)=>b.s-a.s).slice(0,5).forEach(x=>{
+    const p=x.p,cx=X(vol(p)),cy=Y(p.ppg26);
+    s+=`<text x="${(cx+7).toFixed(1)}" y="${(cy+3).toFixed(1)}" fill="#C9D3DD" font-size="9.5" data-pid="${p.id}">${esc(p.name.split(' ').slice(-1)[0])}</text>`;
+  });
+  $('#wv-chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Volume contro produzione">${s}</svg>`;
+  $('#wv-lg').innerHTML=['QB','RB','WR','TE'].map(p=>`<span><i style="background:${POSC[p]};width:9px;height:9px;border-radius:50%"></i>${p}</span>`).join('')+'<span><i style="background:#3A4654;width:9px;height:9px;border-radius:50%"></i>già in una rosa</span>';
+}
+function renderWaiverList(nd){
+  nd=nd||needs();
+  const cand=POOL.filter(p=>(WS.pos==='ALL'||p.pos===WS.pos)&&(!WS.fa?true:!p.own)&&p.own!==MY&&p.pos!=='K'&&p.pos!=='DST')
+    .map(p=>({p,w:waiverScore(p,nd)})).sort((a,b)=>b.w.score-a.w.score).slice(0,25);
+  const ros=mine(),startersIds=new Set(lineup(WEEK).rows.filter(r=>r.x).map(r=>r.x.p.id));
+  const cutList=ros.filter(p=>!startersIds.has(p.id)&&!['O','IR'].includes(p.inj)).sort((a,b)=>basePPG(a)-basePPG(b));
+  const dropFor=pos=>{const same=cutList.find(p=>p.pos===pos);const c=same&&basePPG(same)<basePPG(cutList[0])*1.35?same:cutList[0];return c?c.name:null};
+  volumeChart(cand);
+  const max=Math.max(...cand.map(c=>c.w.score),1);
+  $('#mt-winfo').textContent=`${POOL.filter(p=>!p.own).length} giocatori liberi nel pool ESPN analizzato`;
+  $('#mt-waiver').innerHTML=`<thead><tr><th>Giocatore</th><th>Pos</th><th class="num">Punteggio</th><th class="num">Ppg '26</th><th class="num">Tgt share</th><th class="num">Quota corse</th><th class="num">Snap</th><th>Perché lui</th><th>Al posto di</th></tr></thead><tbody>`+
+    cand.map(c=>{const p=c.p,rs=waiverReasons(p,c.w);
+      return`<tr><td data-pid="${p.id}"><b>${esc(p.name)}</b> <span style="color:var(--k-muted)">${p.nfl}${p.bye?' · bye '+p.bye:''}</span>${p.own?` <span class="tag2 warn">${esc(TBY.get(p.own).abbr)}</span>`:''}</td>
+        <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
+        <td class="num"><span class="mini"><i style="width:${Math.max(4,c.w.score/max*100)}%;background:${POSC[p.pos]}"></i></span>${n0(c.w.score*10)}</td>
+        <td class="num">${p.ppg26!=null?n1(p.ppg26):'—'}</td><td class="num">${p.tsh26?pct(p.tsh26):'—'}</td>
+        <td class="num">${p.car26!=null?n1(p.car26):'—'}</td><td class="num">${p.snap26!=null?n0(p.snap26)+'%':'—'}</td>
+        <td style="white-space:normal;max-width:38ch;color:var(--k-muted)">${rs.slice(0,4).join(' · ')}</td>
+        <td style="color:var(--k-muted)">${dropFor(p.pos)?esc(dropFor(p.pos)):'—'}</td></tr>`}).join('')+'</tbody>';
+}
+function wpChips(){chips($('#mt-wpos'),['ALL','QB','RB','WR','TE'],WS.pos,c=>{WS.pos=c;wpChips();renderWaiverList()})}
+wpChips();
+$('#mt-onlyfa').onchange=e=>{WS.fa=e.target.checked;renderWaiverList()};
+
+/* ponte per le pagine di stagione */
+window.DWR3={POOL,lineupOf,weekPts,basePPG,SLOTS,WEEK,injOf,adv,tm,teamRank,sos3,matchup,needs};
+R.myteam=renderMyTeam;
+if((location.hash||'').slice(1)==='myteam')window.DWR_VIEW('myteam');
+})();
+</script>

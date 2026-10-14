@@ -1,0 +1,70 @@
+<div id="view-matchup" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Matchup della settimana</h2><p>La sfida di questa giornata secondo il calendario ESPN della lega, con le formazioni migliori di entrambi: punti attesi per slot, margine, e i duelli che decidono la partita. La probabilità di vittoria tiene conto di quanto sono ballerini i punteggi in questa lega.</p></div>
+  <div class="strip" id="mu-strip"></div>
+  <div class="an-grid" style="grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)">
+    <div class="chartcard">
+      <h3>Formazioni a confronto</h3>
+      <p class="cn">Slot per slot, con il vantaggio di chi è messo meglio. I punti attesi mescolano il ritmo 2026 con la proiezione stagionale, corretti per la difesa avversaria.</p>
+      <div class="chartwrap" id="mu-chart"></div>
+      <div class="legend2"><span><i style="background:var(--k-me)"></i>tu</span><span><i style="background:var(--offline)"></i>avversario</span><span>ogni riga è uno slot: più lungo il segmento, più largo il vantaggio</span></div>
+      <div style="overflow-x:auto;margin-top:10px"><table class="antable" id="mu-table"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Dove si decide</h3>
+      <p class="cn">I duelli con lo scarto più largo e i giocatori che possono ribaltare il risultato da soli.</p>
+      <div id="mu-keys"></div>
+      <h3 style="margin-top:14px">Il resto del calendario</h3>
+      <div style="overflow:auto;max-height:260px"><table class="antable" id="mu-sched"></table></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="view-trades" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Scambi possibili</h2><p>Per ogni avversario: dove ha troppo e dove gli manca. Poi tutti gli scambi uno-a-uno che migliorano la formazione titolare di <em>entrambi</em> — perché in una lega da quattro uno scambio unilaterale non lo accetta nessuno.</p></div>
+  <div class="an-bar">
+    <label>Avversario <select id="tr-team"></select></label>
+    <label>Guadagno minimo <select id="tr-min"><option value="0.5">mezzo punto a gara</option><option value="1" selected>1 pt a gara</option><option value="2">2 pt a gara</option><option value="4">4 pt a gara</option></select></label>
+    <span class="sp">Il guadagno è la differenza sulla formazione titolare proiettata, per giornata</span>
+  </div>
+  <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)">
+    <div class="chartcard">
+      <h3>Surplus e buchi</h3>
+      <p class="cn">Titolari richiesti contro quello che ognuno ha davvero in rosa, per reparto.</p>
+      <div style="overflow-x:auto"><table class="antable" id="tr-needs"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Proposte che convengono a tutti e due</h3>
+      <p class="cn">Ordinate per guadagno più piccolo fra i due, cioè per quanto è probabile che l'altro accetti.</p>
+      <div style="overflow-x:auto;max-height:520px"><table class="antable" id="tr-list"></table></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="view-history" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Storico della lega</h2><p>Otto stagioni dall'archivio storico della lega: classifiche di regular season, punti, scontri diretti e record. La stagione in corso arriva invece da ESPN in tempo reale.</p></div>
+  <div class="strip" id="hi-strip"></div>
+  <div class="an-grid" style="grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)">
+    <div class="chartcard">
+      <h3>Stagione per stagione</h3>
+      <p class="cn">Record di regular season, punti fatti e subiti, miglior settimana e bilancio nei playoff. La riga con il <b>1°</b> è il miglior record della stagione regolare, che non sempre coincide con chi ha poi vinto il titolo.</p>
+      <div style="overflow:auto;max-height:560px"><table class="antable" id="hi-table"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Punti fatti contro vittorie</h3>
+      <p class="cn">Ogni punto è una stagione di un manager. Sopra la linea si vince più di quanto dicano i punti (calendario o fortuna), sotto il contrario.</p>
+      <div class="chartwrap" id="hi-scatter"></div>
+      <h3 style="margin-top:14px">Punti a gara, anno per anno</h3>
+      <p class="cn">La linea di ognuno nelle sette stagioni chiuse: dice chi è costante e chi va a ondate.</p>
+      <div class="chartwrap" id="hi-chart"></div>
+      <div class="legend2" id="hi-lg"></div>
+      <h3 style="margin-top:14px">Scontri diretti di sempre</h3>
+      <div style="overflow-x:auto"><table class="antable" id="hi-h2h"></table></div>
+    </div>
+  </div>
+</div>
+</div>

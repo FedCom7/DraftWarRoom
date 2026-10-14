@@ -1,0 +1,119 @@
+<section id="mvp" data-n="20" data-t="MVP · Phase 2 · Phase 3">
+  <h2>MVP, Phase 2, Phase 3 <small>20</small></h2>
+  <div class="grid2">
+    <div class="card"><h4>MVP</h4><ul><li>ESPN, lega pubblica e privata (cookie), draft <b>snake</b></li><li>Sync engine con polling adattivo, outbox e SSE</li><li>Draft room: header e sync, current pick, board, roster, disponibili</li><li>Raccomandazioni VORP e disponibilità (ADP FFC ed ESPN)</li><li>Demo draft e mock provider, osservabilità di base</li></ul></div>
+    <div class="card"><h4>Phase 2</h4><ul><li><b>Companion extension</b> per Chrome: legge la draft room ESPN, latenza sotto 1 s, cookie con un clic (valutazione ToS obbligatoria)</li><li>Draft <b>auction</b> (nomination e bid live: <span class="tag u">UNVERIFIED</span> via API)</li><li>SleeperFantasyProvider (API pubblica con endpoint di draft <span class="tag l">LIKELY</span>)</li><li>Proiezioni ricalcolate sullo scoring della lega, tier, preset di strategia</li><li>Notifiche “sei tra 2 pick” (PWA push)</li></ul></div>
+    <div class="card"><h4>Phase 3</h4><ul><li>YahooFantasyProvider (OAuth ufficiale) e NFL Fantasy</li><li>Keeper e dynasty, pick scambiate</li><li>Stanze condivise tra i membri della lega, voti post-draft</li><li>Assistente AI conversazionale sulla draft</li><li>Backtest del modello con nflverse</li></ul></div>
+  </div>
+</section>
+
+<section id="rischi" data-n="21" data-t="Risks & limitations">
+  <h2>Risks and limitations <small>21</small></h2>
+  <div class="tw"><table>
+    <thead><tr><th>Rischio</th><th>Impatto</th><th>Mitigazione</th></tr></thead>
+    <tbody>
+      <tr><td>ESPN cambia host o schema (già successo)</td><td>Alto</td><td>Adapter isolato, host configurabile, validazione zod, canary notturno, fixture versionate per stagione</td></tr>
+      <tr><td>ToS e blocco degli IP del server</td><td>Alto</td><td>Revisione legale, budget basso, un poller per draft, credenziali dell'utente; piano B con extension lato client</td></tr>
+      <tr><td>Latenza di propagazione ESPN sconosciuta</td><td>Medio</td><td>Spike 0; UI onesta (clock “stimato”, età del sync)</td></tr>
+      <tr><td>Scadenza di <code>espn_s2</code></td><td>Medio</td><td>Validazione giornaliera prima della draft, credenziali multiple per lega, CTA di ricollegamento</td></tr>
+      <tr><td>Nessun timestamp e nessun clock da ESPN</td><td>Basso</td><td>Clock stimato ed etichettato come tale</td></tr>
+      <tr><td>Player pool dipendente dalla lega (TQB, IDP)</td><td>Medio</td><td>Pool sempre per lega; posizioni sconosciute mappate su OTHER</td></tr>
+      <tr><td>Errori di mapping degli ID tra fonti</td><td>Medio</td><td>Crosswalk DynastyProcess, controlli di coerenza, override manuali</td></tr>
+      <tr><td>Stagionalità: poche draft fino ad agosto 2027</td><td>Medio</td><td>Mock fedele, lega di test, beta con leghe “late draft”</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="struttura" data-n="22" data-t="File / folder structure">
+  <h2>File e folder structure <small>22</small></h2>
+  <script type="text/x-code" data-label="monorepo · pnpm + turborepo">
+draft-war-room/
+├─ apps/
+│  ├─ web/                         # Next.js (Vercel)
+│  │  └─ src/
+│  │     ├─ app/
+│  │     │  ├─ (auth)/login/page.tsx
+│  │     │  ├─ connect/espn/page.tsx
+│  │     │  ├─ leagues/[leagueId]/preview/page.tsx
+│  │     │  ├─ draft/[draftId]/page.tsx        # SSR snapshot + client room
+│  │     │  ├─ draft/demo/page.tsx
+│  │     │  └─ api/ (leagues, drafts, providers, demo)
+│  │     ├─ features/draft-room/
+│  │     │  ├─ components/ (Header, SyncBadge, CurrentPick, DraftBoard, RosterPanel,
+│  │     │  │               AvailablePlayers, Recommendations, NeedsMatrix, EventStream)
+│  │     │  ├─ store/ (draft-store.ts, selectors.ts)
+│  │     │  ├─ use-draft-stream.ts
+│  │     │  └─ hotkeys.ts
+│  │     └─ lib/ (auth.ts, api.ts, crypto-client.ts)
+│  ├─ worker/                      # Sync Engine (Fly.io)
+│  │  └─ src/ (scheduler.ts, lease.ts, sync/sync-once.ts, sync/diff.ts,
+│  │            outbox-relay.ts, circuit-breaker.ts, ingest/players.ts, metrics.ts)
+│  └─ gateway/                     # SSE (Fly.io)
+│     └─ src/ (server.ts, ticket.ts, stream-hub.ts)
+├─ packages/
+│  ├─ core/        # DraftState, events, reducer, invariants, diff — zero dipendenze esterne
+│  ├─ providers/
+│  │  ├─ espn/     # ESPNFantasyProvider, zod schemas, id maps, fixtures/2025, fixtures/2026
+│  │  ├─ mock/     # MockFantasyProvider, scenario DSL, CLI mock-draft
+│  │  └─ sleeper/  # (fase 2)
+│  ├─ analytics/   # vorp, tiers, availability, pick-score, scoring-engine
+│  ├─ db/          # prisma schema, migrations, repositories
+│  ├─ ui/          # shadcn/ui + componenti condivisi, tokens
+│  └─ config/      # eslint, tsconfig, env schema (zod)
+└─ e2e/            # Playwright
+  </script>
+</section>
+
+<section id="roadmap" data-n="23" data-t="Implementation roadmap">
+  <h2>Implementation roadmap <small>23</small></h2>
+  <div class="tw"><table>
+    <thead><tr><th>Settimana</th><th>Obiettivo</th><th>Deliverable verificabile</th></tr></thead>
+    <tbody>
+      <tr><td>0</td><td>Spike 0 ESPN</td><td>Report con latenza, campi in-progress, 304 e 429; fixture reali</td></tr>
+      <tr><td>1</td><td>Core di dominio e mock</td><td><code>@dwr/core</code> (diff, reducer, invarianti) e MockProvider con test property-based verdi</td></tr>
+      <tr><td>2</td><td>Worker e DB</td><td>Prisma, sync-once, outbox, lease, circuit breaker; test di integrazione con 2 worker</td></tr>
+      <tr><td>3</td><td>Realtime e draft room</td><td>Gateway SSE, store, board e current pick; demo draft end-to-end</td></tr>
+      <tr><td>4</td><td>ESPN reale e auth</td><td>ESPNFantasyProvider, connect ESPN con custodia su KMS, import e preview</td></tr>
+      <tr><td>5</td><td>Analytics</td><td>Ingest ESPN, FFC, Sleeper e DynastyProcess; VORP, disponibilità, Pick Score</td></tr>
+      <tr><td>6</td><td>Hardening</td><td>E2E sul chaos scenario, load test, dashboard e alert, revisione di sicurezza, beta privata</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="domande" data-n="24" data-t="Decisioni e punti aperti">
+  <h2>Decisioni prese e punti ancora aperti <small>24</small></h2>
+  <h3>Deciso</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Domanda</th><th>Risposta</th><th>Effetto sul piano</th></tr></thead>
+    <tbody>
+      <tr><td>Quando è la prossima draft</td><td>Settembre 2027 (quella 2026 è finita il 9 settembre)</td><td>Circa un anno di margine: lo Spike 0 si fa su una lega di test, senza fretta, e il mock diventa lo strumento di sviluppo principale</td></tr>
+      <tr><td>Tipo di lega</td><td><b>Topina</b>, pubblica, snake, 4 team, PPR, FLEX RB/WR, 120 s per pick</td><td>Nessuna autenticazione ESPN; board a 4 colonne; VORP e strategia ricalibrati su 4 team (§1b)</td></tr>
+      <tr><td>Storico pre-2026</td><td>Non disponibile su ESPN (404 su <code>leagueHistory</code>), ma presente nell'archivio Topina da NFL.com</td><td>Le abitudini dei tre avversari si ricavano da lì: 8 stagioni di schieramenti reali</td></tr>
+      <tr><td>Uso</td><td>Personale, non SaaS</td><td>Un solo servizio Node, SQLite o Postgres, nessun login obbligatorio, nessun KMS, nessuna multi-tenancy. La tabella in §1b elenca cosa togliere</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Ancora aperto</h3>
+  <ol>
+    <li><b>La companion extension serve davvero?</b> Con 120 s per pick e 4 team, il polling a 2 s copre tutto: l'estensione diventa interessante solo se lo Spike 0 rivelasse che l'API pubblica espone le pick con un ritardo alto (oltre 10–15 s). Decisione rinviata dopo la misura.</li>
+    <li><b>Dove gira il servizio:</b> una macchina Fly.io sempre accesa (circa 2–3 €/mese) oppure il Mac di casa acceso solo la sera della draft, raggiungibile via Tailscale. La seconda opzione costa zero ma richiede che il Mac resti sveglio per tutta la draft.</li>
+    <li><b>Rapporto con il progetto Topina:</b> portare il client ESPN in TypeScript nel nuovo progetto, oppure riusare lo scraper Python e condividere il database? La prima opzione evita due implementazioni della stessa cosa.</li>
+    <li><b>Quanto fidarsi della forza delle difese:</b> oggi è calcolata sui punti concessi nel 2025. È il metodo standard, ma ha poco potere predittivo a inizio stagione: andrebbe aggiornato in-season e pesato con le prime settimane del 2026.</li>
+    <li><b>Waiver assistant:</b> con 62 giocatori occupati su centinaia, nella tua lega vale più della draft. Va promosso da Fase 2 a MVP al posto dell'auction?</li>
+  </ol>
+</section>
+
+<section id="fonti" data-n="25" data-t="Fonti">
+  <h2>Fonti e verifiche <small>25</small></h2>
+  <ul>
+    <li>Richieste HTTP dirette del 19/09/2026 verso <code>lm-api-reads.fantasy.espn.com</code> (season meta, lega pubblica 899513 per 2025 e 2026, lega privata → 401, player pool, <code>leaguedefaults</code>, header CORS e cache).</li>
+    <li><a href="https://github.com/cwendt94/espn-api">cwendt94/espn-api</a>: endpoint, view, cookie <code>espn_s2</code>/<code>SWID</code>, parsing di <code>draftDetail</code>.</li>
+    <li><a href="https://ffscrapr.ffverse.com/articles/espn_getendpoint.html">ffscrapr: ESPN get endpoint</a>: view multiple, <code>X-Fantasy-Filter</code>.</li>
+    <li><a href="https://ffdraftpro.com/">FFDraftPro</a>: esempio di estensione che ascolta la draft room ESPN (affermazione del produttore, non verificata).</li>
+    <li><a href="https://fantasyfootballcalculator.com/api/v1/adp/ppr?teams=12&amp;year=2026">Fantasy Football Calculator ADP API</a></li>
+    <li><a href="https://docs.sleeper.com/">Sleeper API docs</a> · <code>api.sleeper.app/v1/players/nfl</code> · <code>api.sleeper.com/projections/nfl/2026</code></li>
+    <li><a href="https://github.com/dynastyprocess/data">DynastyProcess data</a>: <code>db_playerids.csv</code>, <code>values-players.csv</code></li>
+    <li><a href="https://nflverse.nflverse.com/">nflverse</a></li>
+  </ul>
+</section>
+</article>
+</div>

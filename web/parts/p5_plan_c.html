@@ -1,0 +1,244 @@
+<section id="realtime" data-n="08" data-t="Realtime & eventi">
+  <h2>Realtime architecture ed eventi <small>08</small></h2>
+  <pre class="mermaid">
+sequenceDiagram
+  participant E as ESPN
+  participant W as Sync Worker
+  participant P as Postgres
+  participant R as Redis Stream
+  participant G as Gateway SSE
+  participant B as Browser
+  W->>E: GET mDraftDetail (ogni 1-3 s)
+  E-->>W: picks 1..42
+  W->>W: validate, contiguity, diff (41 in DB)
+  W->>P: TX pick 42 + outbox seq 318-321
+  W->>R: XADD draft stream seq 318-321
+  R-->>G: XREAD BLOCK
+  G-->>B: id 318 DRAFT_PICK_CREATED ...
+  B->>B: reducer + render in un frame
+  </pre>
+  <ul>
+    <li><b>Envelope:</b> ogni evento di dominio ha un <code>seq</code> monotono per draft. Gli eventi <code>SYNC_*</code> sono <em>effimeri</em>: non hanno seq e non entrano nel replay.</li>
+    <li><b>Connessione:</b> il browser ottiene un ticket firmato (60 s) e apre <code>EventSource</code>. Il gateway verifica il ticket, invia <code>retry: 2000</code> e fa il replay da <code>Last-Event-ID</code> leggendo lo stream Redis, oppure da Postgres se l'evento è oltre la retention.</li>
+    <li><b>Heartbeat:</b> un commento <code>: ping</code> ogni 15 s mantiene aperta la connessione, e un <code>SYNC_HEARTBEAT</code> a ogni poll riuscito porta <code>lastSuccessfulSyncAt</code>.</li>
+    <li><b>Fan-out:</b> un <code>XREAD</code> per draft per istanza del gateway, poi broadcast in memoria ai client di quella draft. Si scala orizzontalmente senza sticky session.</li>
+  </ul>
+  <script type="text/x-code" data-label="packages/core/src/events.ts">
+export interface EventEnvelope<T extends DraftEventType = DraftEventType> {
+  id: string;                 // uuid v7
+  type: T;
+  draftId: string;
+  seq: number | null;         // null = effimero (SYNC_*)
+  stateVersion: number;
+  occurredAt: string;         // quando è successo (stima: rilevazione, ESPN non dà timestamp)
+  emittedAt: string;          // quando il server l'ha pubblicato
+  causationId?: string;       // collega PLAYER_DRAFTED/TEAM_UPDATED alla pick
+  payload: DraftEventPayloads[T];
+}
+
+export type DraftEventPayloads = {
+  DRAFT_STARTED:       { startedAt: string; totalPicks: number };
+  DRAFT_PICK_CREATED:  { pick: DraftPickView; next: CurrentPick | null };
+  DRAFT_PICK_UPDATED:  { pick: DraftPickView; previousPlayerId: string; revision: number };
+  DRAFT_PICK_REMOVED:  { overallPick: number; playerId: string; teamId: string; reason: 'PROVIDER_UNDO' };
+  DRAFT_STATE_UPDATED: { status: DraftStatus; current: CurrentPick | null; picksMade: number };
+  DRAFT_COMPLETED:     { completedAt: string; totalPicks: number };
+  TEAM_UPDATED:        { teamId: string; rosterPlayerIds: string[] };
+  PLAYER_DRAFTED:      { playerId: string; teamId: string; overallPick: number };
+  SYNC_CONNECTED:      { recovered: boolean; afterFailures: number };
+  SYNC_HEARTBEAT:      { lastSuccessfulSyncAt: string; providerLatencyMs: number; pollIntervalMs: number };
+  SYNC_DEGRADED:       { reason: string; consecutiveFailures: number; lastSuccessfulSyncAt: string | null };
+  SYNC_ERROR:          { code: 'PROVIDER_DOWN' | 'RATE_LIMITED' | 'AUTH_INVALID' | 'SCHEMA_DRIFT'; retryInMs: number | null };
+};
+export type DraftEventType = keyof DraftEventPayloads;
+  </script>
+  <div class="tw"><table>
+    <thead><tr><th>Evento</th><th>Producer</th><th>Consumer</th><th>Comportamento frontend</th></tr></thead>
+    <tbody>
+      <tr><td><code>DRAFT_STARTED</code></td><td>Sync engine</td><td>Draft room, notifiche</td><td>Header passa a “In corso”; board e clock attivi</td></tr>
+      <tr><td><code>DRAFT_PICK_CREATED</code></td><td>Sync engine</td><td>Draft room</td><td>Aggiunge la pick alla board con flash di 1,4 s, voce nel ticker, pick corrente → next</td></tr>
+      <tr><td><code>DRAFT_PICK_UPDATED</code></td><td>Sync engine</td><td>Draft room</td><td>Sostituisce il player nella cella, badge “corretta”, il vecchio player torna disponibile</td></tr>
+      <tr><td><code>DRAFT_PICK_REMOVED</code></td><td>Sync engine</td><td>Draft room</td><td>Svuota la cella, ripristina il player, la pick corrente torna indietro</td></tr>
+      <tr><td><code>DRAFT_STATE_UPDATED</code></td><td>Sync engine</td><td>Draft room</td><td>Round, pick, on the clock, clock stimato</td></tr>
+      <tr><td><code>DRAFT_COMPLETED</code></td><td>Sync engine</td><td>Draft room, analytics</td><td>Il clock sparisce, compare il banner “Draft completata” e il link al recap</td></tr>
+      <tr><td><code>TEAM_UPDATED</code></td><td>Sync engine (derivato)</td><td>Pannello roster, webhook</td><td>Aggiorna il roster; è idempotente se già derivato dalla pick</td></tr>
+      <tr><td><code>PLAYER_DRAFTED</code></td><td>Sync engine (derivato)</td><td>Lista disponibili, watchlist</td><td>Riga barrata con fade di 0,7 s, poi rimossa; avviso se era in watchlist</td></tr>
+      <tr><td><code>SYNC_CONNECTED</code></td><td>Sync engine / gateway</td><td>Indicatore di sync</td><td>Torna LIVE solo con un sync recente</td></tr>
+      <tr><td><code>SYNC_DEGRADED</code></td><td>Sync engine</td><td>Indicatore di sync</td><td>DELAYED con età dell'ultimo sync; clock marcato come stima</td></tr>
+      <tr><td><code>SYNC_ERROR</code></td><td>Sync engine</td><td>Indicatore di sync, alerting</td><td>OFFLINE con motivo; per AUTH_INVALID compare la CTA “Ricollega ESPN”</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="stato" data-n="09" data-t="Draft State (TS)">
+  <h2>Draft State normalizzato <small>09</small></h2>
+  <p>È l'unico modello che il frontend conosce. Lo producono sia <code>GET /state</code> sia il reducer lato client (lo stesso codice di <code>@dwr/core</code>).</p>
+  <script type="text/x-code" data-label="packages/core/src/draft-state.ts">
+export type DraftStatus = 'SCHEDULED' | 'IN_PROGRESS' | 'PAUSED' | 'COMPLETED' | 'CANCELLED' | 'UNKNOWN';
+export type SyncHealth  = 'LIVE' | 'DELAYED' | 'OFFLINE';
+export type PositionCode = 'QB' | 'RB' | 'WR' | 'TE' | 'K' | 'DST';
+
+export interface DraftState {
+  schemaVersion: 1;
+  draftId: string;
+  provider: ProviderId;
+  league: { id: string; name: string; season: number; teamCount: number; scoring: 'PPR' | 'HALF' | 'STD' | 'CUSTOM';
+            rosterSlots: { slot: string; eligible: PositionCode[]; count: number }[] };
+  type: 'SNAKE' | 'AUCTION';
+  status: DraftStatus;
+  totalRounds: number;
+  totalPicks: number;
+  current: CurrentPick | null;           // null se completata o non iniziata
+  picks: DraftPickView[];                // INVARIANTE: contigue 1..n, player unici
+  order: DraftSlot[];                    // tutti gli slot, anche futuri (per "next up")
+  teams: TeamView[];
+  rosters: Record<string, RosterView>;   // teamId → slot assegnati
+  players: Record<string, PlayerView>;   // player pool della lega
+  draftedPlayerIds: string[];            // available = players − drafted (derivato)
+  myTeamId: string | null;
+  sync: SyncInfo;
+  version: { stateVersion: number; lastEventSeq: number };
+  updatedAt: string;
+}
+
+export interface CurrentPick { overallPick: number; round: number; pickInRound: number; teamId: string; clock: ClockState | null }
+export interface ClockState  { secondsPerPick: number; startedAt: string; expiresAt: string; source: 'PROVIDER' | 'ESTIMATED' }
+export interface DraftSlot   { overallPick: number; round: number; pickInRound: number; teamId: string; originalTeamId?: string }
+export interface DraftPickView extends DraftSlot {
+  playerId: string; playerName: string; position: PositionCode; nflTeam: string | null;
+  isKeeper: boolean; isAutoPick: boolean | null; bidAmount: number | null; revision: number;
+  detectedAt: string; source: 'PROVIDER_POLL' | 'PROVIDER_RESYNC' | 'EXTENSION' | 'MOCK';
+}
+export interface TeamView    { id: string; name: string; abbrev: string; logoUrl: string | null; isMine: boolean }
+export interface RosterView  { teamId: string; slots: { slot: string; playerId: string | null }[]; bench: string[]; count: number }
+export interface PlayerView  { id: string; name: string; position: PositionCode; nflTeam: string | null; bye: number | null;
+                               injury: string | null; rank: number | null; adp: number | null; adpStdDev: number | null;
+                               projPoints: number | null; vorp: number | null; tier: number | null }
+export interface SyncInfo    { health: SyncHealth; lastSuccessfulSyncAt: string | null; lastAttemptAt: string | null;
+                               consecutiveFailures: number; pollIntervalMs: number; providerLatencyMs: number | null; message?: string }
+  </script>
+</section>
+
+<section id="frontend" data-n="10" data-t="Frontend architecture">
+  <h2>Frontend architecture <small>10</small></h2>
+  <div class="grid2">
+    <div class="card"><h4>Rendering</h4><ul><li><code>/draft/[draftId]</code>: il server component carica lo snapshot, che viene idratato nel client component</li><li>Store Zustand con slice (picks, players, sync, ui) e selettori memoizzati</li><li>TanStack Query solo per i dati non live (player pool, profili)</li></ul></div>
+    <div class="card"><h4>Pipeline degli eventi</h4><ul><li>SSE → coda → <b>batch per frame</b> (<code>requestAnimationFrame</code>)</li><li>Riordino per <code>seq</code>: duplicati scartati, buchi in buffer per 1,5 s, poi resync</li><li>Verifica degli invarianti dopo ogni batch; se falliscono, snapshot completo</li></ul></div>
+    <div class="card"><h4>Performance</h4><ul><li>Lista disponibili virtualizzata (TanStack Virtual), ~600 righe</li><li>Celle della board <code>memo</code> per <code>overallPick</code>, altezza fissa (zero layout shift)</li><li>Animazioni solo con <code>transform</code>/<code>opacity</code>, rispettando <code>prefers-reduced-motion</code></li></ul></div>
+    <div class="card"><h4>Stato confermato dal server</h4><p>Niente stato ottimistico per le pick, perché l'app è in sola lettura e le pick le conferma ESPN. Watchlist, note e filtri sono stato locale ottimistico (persistito per utente).</p></div>
+  </div>
+  <script type="text/x-code" data-label="apps/web/src/features/draft-room/use-draft-stream.ts">
+export function useDraftStream(draftId: string) {
+  const store = useDraftStore();
+  useEffect(() => {
+    let es: EventSource | null = null; let attempt = 0; let closed = false;
+    const connect = async () => {
+      const { ticket } = await api.post(`/api/drafts/${draftId}/realtime-ticket`);
+      const since = store.getState().version.lastEventSeq;
+      es = new EventSource(`${GATEWAY}/sse/drafts/${draftId}?ticket=${ticket}&since=${since}`);
+      es.onopen = () => { attempt = 0; store.getState().setTransport('open'); };
+      es.onmessage = (m) => queue.push(JSON.parse(m.data));               // applicato in rAF
+      es.onerror = () => { es?.close(); store.getState().setTransport('closed');
+        if (!closed) setTimeout(connect, Math.min(10_000, 1000 * 2 ** attempt++) * (0.8 + Math.random() * 0.4)); };
+    };
+    const wake = () => { if (document.visibilityState === 'visible') { es?.close(); resyncFromSnapshot(draftId).then(connect); } };
+    document.addEventListener('visibilitychange', wake);   // laptop sleep, tab congelata
+    window.addEventListener('online', wake);
+    connect();
+    return () => { closed = true; es?.close(); document.removeEventListener('visibilitychange', wake); window.removeEventListener('online', wake); };
+  }, [draftId]);
+}
+  </script>
+  <h3>Sync status: regola unica</h3>
+  <p>Lo stato viene calcolato dal client con l'orologio allineato al server, non ricevuto come etichetta:</p>
+  <ul>
+    <li>🟢 <b>LIVE</b>: trasporto aperto, <b>e</b> ultimo sync ESPN riuscito da ≤ max(5 s, 2× intervallo + 1 s), <b>e</b> server senza degrado. Testo: “ESPN synced 1.2s ago”.</li>
+    <li>🟡 <b>DELAYED</b>: trasporto aperto ma sync più vecchio della soglia, fino a 30 s, oppure <code>SYNC_DEGRADED</code>. Testo: “Last successful sync: 18s ago”. Il clock diventa grigio.</li>
+    <li>🔴 <b>OFFLINE</b>: trasporto chiuso, oppure sync più vecchio di 30 s, oppure <code>SYNC_ERROR</code>. Testo: “Trying to reconnect…”. Il blocco “on the clock” viene attenuato e mostra un banner di dati non live.</li>
+  </ul>
+</section>
+
+<section id="ui" data-n="11" data-t="UI / Draft Room">
+  <h2>UI wireframe <small>11</small></h2>
+  <p>La versione interattiva è nella scheda <a href="#console" data-goto="console">Console demo</a>. Il layout desktop è a tre colonne con larghezze fisse per le colonne laterali, così nulla si sposta durante una draft di tre ore.</p>
+  <script type="text/x-code" data-label="wireframe · ≥ 1380px">
+┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│ DRAFT WAR ROOM · Lega "Sunday Ticket" · 2026 · SNAKE · In corso   ● LIVE ESPN synced 1.2s ago [↻] │
+├───────────────────┬────────────────────────────────────────────────────┬─────────────────────┤
+│ ROUND 5  PICK 47  │ DRAFT BOARD   R │ ALPHA │ BETA │ GAMMA │ YOU │ ...  │ ULTIME PICK         │
+│ ON THE CLOCK      │  →            1 │ 1.01  │ 1.02 │ 1.03  │1.04 │      │ 16:04 P42 A → X  WR │
+│ TEAM GAMMA        │  ←            2 │ 2.10  │ 2.09 │ 2.08  │2.07 │      │ 16:03 P41 ...       │
+│ ████████░░ 0:41   │  →            5 │ 5.01  │ 5.02 │[OTC ] │     │      ├─────────────────────┤
+│ Poi: Delta · Tu   ├─────────────────────────────────────────────────────┤ NEEDS MATRIX        │
+├───────────────────┤ DISPONIBILI  [/ cerca] [ALL QB RB WR TE FLEX K DST] │ team QB RB WR TE K D│
+│ CONSIGLIATI       │ ★ Rk Player        Pos NFL Bye ADP Proj VORP Disp% │ ▸Gamma 1  2  1  0 . │
+│ 1 Player  91 ▮▮▮  │   23 J. Doe        WR  DET  6  24  251  +48  18%  │ Insight: run su WR  │
+│ 2 Player  84      │   ...                                              ├─────────────────────┤
+├───────────────────┤                                                    │ EVENT STREAM / SIM  │
+│ IL MIO ROSTER 4/15│                                                    │                     │
+│ QB  RB  RB  WR ...│                                                    │                     │
+└───────────────────┴────────────────────────────────────────────────────┴─────────────────────┘
+  </script>
+  <h3>Principi UX per 1–3 ore di draft</h3>
+  <ul>
+    <li><b>Layout stabile:</b> altezze fisse, niente modali e niente toast che coprono i contenuti; le animazioni durano al massimo 1,4 s e non bloccano l'interazione.</li>
+    <li><b>Auto-scroll intelligente:</b> la board segue la pick corrente finché l'utente non scrolla manualmente. A quel punto compare un blocco con il pulsante “↧ Pick corrente”; <kbd>L</kbd> alterna il blocco.</li>
+    <li><b>La mia squadra:</b> colonna colorata in ciano in tutta la board, stato “TU SEI ON THE CLOCK” sull'area principale, e “Tu tra N pick” sempre visibile.</li>
+    <li><b>Scorciatoie:</b> <kbd>/</kbd> cerca, <kbd>1</kbd>–<kbd>6</kbd> filtro per posizione, <kbd>0</kbd> tutti, <kbd>F</kbd> FLEX, <kbd>W</kbd> watchlist, <kbd>C</kbd> vai alla pick corrente, <kbd>L</kbd> blocca lo scroll, <kbd>R</kbd> riconnetti.</li>
+    <li><b>Dark mode di default</b>, contrasto AA, cifre tabulari e colori di posizione coerenti ovunque (QB rosso, RB verde, WR blu, TE arancio, K viola, DST grigio).</li>
+  </ul>
+</section>
+
+<section id="analisi" data-n="12" data-t="NFL analytics">
+  <h2>Analisi NFL: come ottimizzare le pick <small>12</small></h2>
+  <p>La raccomandazione deve rispondere a una domanda precisa: <em>quale giocatore perdo se non lo prendo adesso, e quanto vale rispetto a ciò che troverò alla mia prossima pick?</em> Per questo servono proiezioni, ADP con varianza e contesto della lega.</p>
+  <h3>Fonti dati gratuite</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Fonte</th><th>Dati</th><th>Accesso</th><th>Stato</th></tr></thead>
+    <tbody>
+      <tr><td>ESPN <code>kona_player_info</code></td><td>Rank PPR/STD/SF, ADP ESPN, auction value, proiezione stagionale, infortuni</td><td>API non ufficiale, pool legato alla lega</td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>Sleeper <code>api.sleeper.app/v1/players/nfl</code></td><td>Anagrafica completa (~14,6 MB), status, depth chart, id incrociati</td><td>API pubblica documentata, da scaricare al massimo una volta al giorno</td><td><span class="tag v">VERIFIED</span> (risposta) · limite giornaliero <span class="tag l">LIKELY</span></td></tr>
+      <tr><td>Sleeper <code>api.sleeper.com/projections/nfl/{season}</code></td><td>Proiezioni per singola statistica e <code>adp_ppr</code>, <code>adp_half_ppr</code>, <code>adp_2qb</code>…</td><td>Endpoint non documentato</td><td><span class="tag v">VERIFIED</span> (risponde) · stabilità <span class="tag u">UNVERIFIED</span></td></tr>
+      <tr><td>Fantasy Football Calculator</td><td>ADP con <b>stdev</b>, high/low, bye, per formato e numero di team</td><td><code>/api/v1/adp/ppr?teams=10&amp;year=2026</code></td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>DynastyProcess <code>values-players.csv</code></td><td>ECR 1QB/2QB (derivato da FantasyPros), valori</td><td>CSV su GitHub, aggiornato ogni giorno; licenza da verificare</td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>DynastyProcess <code>db_playerids.csv</code></td><td><b>Crosswalk degli ID</b>: espn_id, sleeper_id, gsis_id, fantasypros_id, yahoo_id…</td><td>CSV su GitHub</td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>nflverse (nflreadr / nflreadpy)</td><td>Stat storiche play-by-play, snap share, target share, expected fantasy points</td><td>Release GitHub (l'URL diretto provato ha dato 404, quindi usare le librerie)</td><td><span class="tag l">LIKELY</span></td></tr>
+    </tbody>
+  </table></div>
+  <h3>Pipeline del modello</h3>
+  <ol>
+    <li><b>ID unificati:</b> join sul crosswalk DynastyProcess, con fallback sul nome normalizzato più posizione e team, e revisione manuale delle collisioni.</li>
+    <li><b>Proiezione di consenso sullo scoring della lega:</b> le statistiche proiettate di Sleeper vengono ricalcolate con le <code>scoringItems</code> della lega (reception, bonus, TD da 6 per QB…) e mediate con la proiezione ESPN. Pesi iniziali 50/50, poi calibrati.</li>
+    <li><b>Replacement level specifico della lega:</b> starter × team, più la quota FLEX e SUPERFLEX distribuita con una simulazione su chi occupa il FLEX. Si ottiene <b>VORP = proj − proj(replacement)</b>.</li>
+    <li><b>Tier:</b> clustering 1D sulle proiezioni per posizione (salti oltre ~6% creano un nuovo tier). Il “tier cliff” è la differenza tra l'ultimo giocatore del tier e il primo del tier successivo.</li>
+    <li><b>Modello di disponibilità:</b> per ogni giocatore, posizione di draft ~ Normale(ADP, σ), con σ presa dalla stdev FFC oppure ≈ 0,2·ADP. La probabilità di trovarlo ancora alla mia prossima pick <i>k</i>, sapendo che è disponibile ora (pick <i>c</i>), è <code>S = (1 − Φ((k − ADP)/σ)) / (1 − Φ((c − ADP)/σ))</code>.</li>
+    <li><b>Correzione per i bisogni avversari:</b> i team che scelgono tra ora e la mia prossima pick hanno slot vuoti. Se 3 su 5 non hanno un QB, la probabilità di sopravvivenza dei QB si riduce. Anche le “run” (più di 4 giocatori della stessa posizione nelle ultime 8 pick) aumentano il rischio per quella posizione.</li>
+    <li><b>VONA atteso:</b> <code>E[best VORP alla prossima pick | pos] = Σ vorp_i · S_i · Π_{j&lt;i}(1 − S_j)</code>. Il VONA è il VORP del giocatore meno questo valore atteso.</li>
+    <li><b>Pick Score</b> = need × (0,45·VORP + 0,55·VONA) × (0,7 + 0,3·(1 − S)). Il fattore need vale 1,0 per uno starter mancante, 0,8 per il FLEX, 0,25–0,6 per la panchina, ≈ 0 per K e DST prima del round 12.</li>
+    <li><b>Aggiustamenti:</b> penalità se troppi starter hanno lo stesso bye; bonus handcuff per il backup del proprio RB1; bonus stack QB–WR opzionale; penalità di rischio per giocatori infortunati (Q, D, O, IR).</li>
+  </ol>
+  <div class="callout"><p><b>Strategie selezionabili</b> (preset che modificano i pesi): BPA puro, Balanced, Zero-RB, Hero-RB, Late-round QB, Upside (usa le proiezioni al 75° percentile). Il motore spiega sempre il “perché” con etichette leggibili: <i>VORP +62 · 18% disponibile alla tua prossima pick · ultimo del tier 2 · riempie RB2</i>.</p></div>
+  <div class="callout"><p><b>Queste analisi sono già implementate come console navigabile</b>, divisa in due aree — <b>Draft</b> (draft room, value board, scarsità, avversari) e <b>Stagione</b> (la mia rosa, waiver) — più quattro pagine che compaiono in entrambe. Tutte con i dati reali della lega Topina: <a href="#myteam" data-goto="myteam">La mia rosa</a> (formazione consigliata, salute dei tuoi giocatori e waiver su misura), <a href="#value" data-goto="value">Value board</a> (tier, drop e utilizzo 2025 per ogni giocatore), <a href="#scarcity" data-goto="scarcity">Scarsità &amp; VORP</a> (curva di valore, replacement level e simulazione dei tuoi 15 turni), <a href="#profiles" data-goto="profiles">Profili</a> (volume, snap, età, coerenza fra proiezione e produzione), <a href="#depth" data-goto="depth">Reparti NFL</a> (gerarchie e concentrazione per squadra), <a href="#rivals" data-goto="rivals">Avversari</a> (otto stagioni di abitudini reali dei tuoi tre rivali più il mock draft), <a href="#schedule" data-goto="schedule">Calendario</a> (bye e difficoltà, anche sulle settimane di playoff) e <a href="#waiver" data-goto="waiver">Waiver</a> (chi è libero adesso nella tua lega), oltre al <a href="#compare" data-goto="compare">Confronto</a> diretto fra due giocatori. Sono la specifica funzionale del modulo analytics: ciò che si vede è ciò che il backend dovrà calcolare.</p></div>
+  <h3>Fonti aggiuntive verificate il 20/09/2026</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Dato</th><th>Endpoint o file</th><th>Stato</th><th>Nota</th></tr></thead>
+    <tbody>
+      <tr><td>Calendario e bye 2026</td><td><code>/seasons/2026?view=proTeamSchedules_wl</code> → <code>settings.proTeams[].byeWeek</code> e <code>proGamesByScoringPeriod</code></td><td><span class="tag v">VERIFIED</span></td><td>Risolve i bye mancanti: ora tutte e 32 le squadre sono coperte</td></tr>
+      <tr><td>Forza delle difese</td><td>nflverse <code>stats_player_week_2025.csv</code>, punti PPR concessi per reparto</td><td><span class="tag v">VERIFIED</span></td><td>È una misura dell'anno scorso: descrive il passato, e come previsione vale poco oltre le prime settimane</td></tr>
+      <tr><td>Storico della lega</td><td>archivio del progetto Topina (NFL.com), 2019-2025, 610 schieramenti per stagione</td><td><span class="tag v">VERIFIED</span></td><td>Unica fonte possibile: <code>/leagueHistory/{id}?seasonId=2025</code> su ESPN risponde <b>404</b>, perché la lega è su ESPN solo dal 2026</td></tr>
+      <tr><td>Roster attuali e giocatori liberi</td><td>lega Topina <code>view=mRoster</code> più <code>kona_player_info</code></td><td><span class="tag v">VERIFIED</span></td><td>62 giocatori occupati su tutto il pool: il resto è disponibile ai waiver</td></tr>
+      <tr><td>Forza degli attacchi NFL</td><td>nflverse <code>stats_team_reg_2025/2026.csv</code>: EPA e TD per gara, mix passaggio-corsa</td><td><span class="tag v">VERIFIED</span></td><td>Il 2026 pesa poco finché le gare sono due: la miscela dà più peso al 2025</td></tr>
+      <tr><td>Utilizzo 2025 e 2026</td><td>nflverse <code>stats_player_reg_*</code> e <code>snap_counts_*</code></td><td><span class="tag v">VERIFIED</span></td><td>203 giocatori su 240 hanno lo storico completo; i rookie per definizione no</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Funzioni per l'analista, in draft</h3>
+  <ul>
+    <li><b>“Chi resta alla mia prossima pick”:</b> la lista dei disponibili ordinata per probabilità di sopravvivenza.</li>
+    <li><b>Needs matrix:</b> conteggio per posizione di ogni team, evidenziando quelli che scelgono prima di te.</li>
+    <li><b>Value vs ADP:</b> badge “steal” quando il rank di consenso è molto migliore dell'ADP.</li>
+    <li><b>Bye heatmap</b> del roster e avviso di concentrazione.</li>
+    <li><b>Dopo la draft:</b> proiezione della formazione titolare di ogni team e voto di draft relativo alla lega.</li>
+    <li><b>Backtest (Fase 3):</b> il modello viene valutato su draft storiche di leghe pubbliche confrontandolo con i punti reali di nflverse.</li>
+  </ul>
+  <p class="callout warn">Le proiezioni ESPN vanno mostrate solo ai membri autenticati della lega e non ridistribuite. Il modello di raccomandazione si basa prima di tutto sulle fonti aperte. Valutazione ToS: <span class="tag u">UNVERIFIED</span>.</p>
+</section>

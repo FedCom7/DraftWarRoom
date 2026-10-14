@@ -1,0 +1,85 @@
+<div id="view-console" hidden>
+<div class="console" id="console">
+  <p class="k-note"><b style="color:#F2D82E">DEMO DRAFT</b> Simulazione nel browser dell'intera pipeline: ESPN finto (formato <code>draftDetail</code> verificato), sync engine, outbox/stream, SSE, client. Impostazioni, team, pickOrder e player pool sono quelli <b>reali</b> della tua lega Topina, letti da ESPN il 20/09/2026. Le pick sono simulate, oppure rigiocate dalla draft vera con “Replay draft 2026”. Scorciatoie: <kbd>/</kbd> cerca · <kbd>1</kbd>–<kbd>6</kbd> posizioni · <kbd>0</kbd> tutti · <kbd>F</kbd> flex · <kbd>W</kbd> watchlist · <kbd>C</kbd> pick corrente · <kbd>L</kbd> blocca scroll · <kbd>R</kbd> riconnetti · <kbd>Space</kbd> pausa</p>
+  <header class="k-head">
+    <div class="k-league">Topina<small>ESPN · leagueId 1948241900 · stagione 2026 · 4 team · PPR · Snake 15 round · 120s per pick · tu = Sommo</small></div>
+    <div class="k-kv">Stato draft<b id="h-status">—</b></div>
+    <div class="k-kv">Pick<b id="h-picks">—</b></div>
+    <div class="k-kv">Latenza ESPN<b id="h-lat">—</b></div>
+    <div class="k-kv">Poll<b id="h-iv">—</b></div>
+    <div class="sync LIVE" id="sync" role="status" aria-live="polite"><i class="dot"></i><div><b id="sync-s">LIVE</b><span id="sync-m">—</span></div><button id="btn-reconnect" title="Resync completo (R)" style="margin-left:auto">↻ Reconnect</button></div>
+  </header>
+
+  <div class="k-grid">
+    <div class="k-col">
+      <section class="pn hero" id="hero" aria-label="Pick corrente">
+        <div class="stalebar" id="stalebar">Dati non live</div>
+        <div class="pb">
+          <div class="rp"><div><small>ROUND</small><b id="hr">—</b></div><div><small>PICK</small><b id="hp">—</b></div><span class="lab" id="hl"></span></div>
+          <div class="otc" id="otc">ON THE CLOCK</div>
+          <div class="tn" id="htn">—</div>
+          <div class="clock"><div class="bar"><i id="hbar" style="width:100%"></i></div><span class="t" id="ht">—</span></div>
+          <div class="sub" id="hsub">Clock stimato · ESPN non espone la scadenza della pick</div>
+          <div class="next" id="hnext"></div>
+        </div>
+        <div class="lastpick" id="lastpick">In attesa della prossima pick…</div>
+      </section>
+      <section class="pn" aria-label="Consigliati">
+        <h3>Consigliati per te <span class="r" style="font-size:11px;color:#8593A2">Pick Score · modello demo</span></h3>
+        <div class="pb" id="recs"></div>
+      </section>
+      <section class="pn" aria-label="Roster">
+        <h3>Roster <span class="r"><select id="roster-team" aria-label="Team"></select></span></h3>
+        <div class="pb" id="roster"></div>
+      </section>
+    </div>
+
+    <div class="k-col">
+      <section class="pn boardwrap" aria-label="Draft board">
+        <h3>Draft board <span class="r"><button id="btn-lock" title="Blocca/sblocca auto-scroll (L)">Auto-scroll: on</button><button id="btn-cur" title="Vai alla pick corrente (C)">↧ Pick corrente</button></span></h3>
+        <div class="board" id="board"><div class="bgrid" id="bgrid"></div></div>
+        <button class="jump" id="jump" hidden>↧ Torna alla pick corrente</button>
+      </section>
+      <section class="pn" aria-label="Giocatori disponibili">
+        <h3>Giocatori <span class="r" id="pcount" style="font-size:11.5px;color:#8593A2"></span></h3>
+        <div class="pf">
+          <input type="search" id="q" placeholder="Cerca giocatore  ( / )" aria-label="Cerca giocatore">
+          <div class="chips" id="poschips"></div>
+          <select id="nfl" aria-label="Team NFL"><option value="">Tutti i team NFL</option></select>
+          <label><input type="checkbox" id="avail" checked> Solo disponibili</label>
+          <label><input type="checkbox" id="watch"> ★ Watchlist</label>
+        </div>
+        <div class="ptable" id="ptable"><table><thead><tr id="phead"></tr></thead><tbody id="pbody"></tbody></table></div>
+      </section>
+    </div>
+
+    <div class="k-col c3">
+      <section class="pn" aria-label="Simulatore ESPN">
+        <h3>Simulatore ESPN · Demo control</h3>
+        <div class="pb ctl">
+          <div class="row"><span class="lab">Draft</span><button id="sim-pause">Pausa draft</button><button id="sim-reset">Nuova draft</button><button id="sim-replay">Replay draft 2026</button><label style="display:flex;gap:5px;align-items:center;font-size:12px;color:#8593A2"><input type="checkbox" id="sim-auto"> Autopick per me</label></div>
+          <div class="row"><span class="lab">Ritardo pick avversari: <b id="sim-dv">3</b> s (media)</span><input type="range" id="sim-delay" min="1" max="15" value="3" aria-label="Ritardo pick"></div>
+          <div class="row"><span class="lab">Risposta API ESPN</span><div class="seg" id="sim-mode"><button data-m="ok" class="on">200 OK</button><button data-m="503">503</button><button data-m="429">429</button><button data-m="timeout">Timeout</button></div></div>
+          <div class="row"><span class="lab">Rete e infrastruttura</span><button id="net-toggle">Disconnetti rete</button><button id="net-sleep">Sleep laptop 8s</button><button id="net-restart">Restart backend</button></div>
+          <div class="row"><span class="lab">Caos eventi</span><button id="ch-dup">Evento duplicato</button><button id="ch-ooo">Fuori ordine</button><button id="ch-gap">Snapshot con buco</button><button id="ch-undo">Undo commissioner</button></div>
+        </div>
+        <div class="metrics" id="metrics"></div>
+      </section>
+      <section class="pn" aria-label="Ultime pick">
+        <h3>Ultime pick <span class="r" style="font-size:11px;color:#8593A2">rilevazione · consegna UI</span></h3>
+        <ul class="tick" id="ticker"></ul>
+      </section>
+      <section class="pn" aria-label="Needs matrix">
+        <h3>Needs matrix <span class="r" style="font-size:11px;color:#8593A2">▸ scelgono prima di te</span></h3>
+        <div class="pb" style="padding-top:4px"><table class="needs" id="needs"></table></div>
+        <div class="insight" id="insight"></div>
+      </section>
+      <section class="pn" aria-label="Live event stream">
+        <h3>Live event stream <span class="r"><select id="logf" aria-label="Filtro log"><option value="all">Tutti</option><option value="dom">Dominio</option><option value="sync">Sync ESPN</option><option value="client">Client · rete</option><option value="espn">ESPN (simulato)</option></select><label style="display:flex;gap:4px;align-items:center;font-size:11px;color:#8593A2"><input type="checkbox" id="loghb"> heartbeat</label></span></h3>
+        <div class="log" id="log" aria-live="off"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+<div class="overlay" id="sleepov" hidden>Laptop in sleep<small>Nessun evento ricevuto: al risveglio il client fa il resync</small></div>

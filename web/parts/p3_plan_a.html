@@ -1,0 +1,127 @@
+<header class="topbar">
+  <div class="navrow">
+    <button class="brand" data-home="1"><i></i>Draft War Room</button>
+    <div class="blocks" role="tablist" aria-label="Aree">
+      <button role="tab" data-block="draft" aria-selected="true">Draft</button>
+      <button role="tab" data-block="season" aria-selected="false">Stagione</button>
+    </div>
+    <div class="navright">
+      <div class="legend"><span class="tag v">VERIFIED</span><span class="tag l">LIKELY</span><span class="tag u">UNVERIFIED</span><span class="tag a">ASSUMPTION</span></div>
+      <button class="planlink" data-view="plan">Piano tecnico</button>
+    </div>
+  </div>
+  <nav class="subnav" id="subnav" aria-label="Pagine"></nav>
+</header>
+
+<div id="view-plan" class="plan">
+<nav class="toc" aria-label="Indice">
+  <b>Indice</b>
+  <ol id="toc"></ol>
+</nav>
+<article class="doc">
+
+<section id="sintesi" data-n="00" data-t="Sintesi e verdetto" style="padding-top:8px">
+  <div class="meta"><span>Fantasy NFL Draft Room · technical implementation plan</span><span>Verifiche ESPN eseguite il 19/09/2026</span><span>Stagione NFL 2026 · settimana 2</span></div>
+  <h1>Una draft room che si aggiorna <em>da sola</em>.</h1>
+  <p class="lede">Questo piano parte da ciò che ESPN consente davvero e costruisce il resto attorno a quel vincolo: un Sync Engine lato server che legge la draft ESPN, la normalizza, la salva in modo idempotente e la invia in tempo reale a ogni browser collegato. Accanto trovi una console demo funzionante che simula l'intero flusso, compresi i guasti.</p>
+  <div class="verdict">
+    <div><h4>Fattibilità</h4><span class="big">Sì, con polling</span><p>ESPN non offre un'API pubblica ufficiale né un push verso terzi. Resta l'API non ufficiale v3 (<code>lm-api-reads</code>), che risponde e restituisce le pick. La tua lega <b>Topina</b> è pubblica: si legge senza alcuna autenticazione.</p></div>
+    <div><h4>Latenza realistica</h4><span class="big">≈ 1–3 s</span><p>Il tempo si misura da quando ESPN espone la pick nell'API. Quel ritardo di propagazione è <span class="tag u">UNVERIFIED</span> e va misurato durante una draft vera (Spike 0).</p></div>
+    <div><h4>Rischio principale</h4><span class="big">API non ufficiale</span><p>Può cambiare senza preavviso (l'host è già cambiato: il vecchio <code>fantasy.espn.com/apis/v3</code> ora risponde con un redirect). Per un prodotto commerciale serve anche una verifica legale dei ToS.</p></div>
+  </div>
+  <div style="display:flex;flex-wrap:wrap;gap:8px"><button class="cta" data-goto="console">Apri la draft room demo →</button><button class="cta" data-goto="value" style="background:var(--surface);color:var(--ink);border:1px solid var(--line)">Value board e tier →</button><button class="cta" data-goto="scarcity" style="background:var(--surface);color:var(--ink);border:1px solid var(--line)">Scarsità e VORP →</button></div>
+  <div class="callout" style="margin-top:18px"><p><b>Contesto confermato.</b> La lega di riferimento è <b>Topina</b> (<code>leagueId 1948241900</code>, 4 team, pubblica, snake, PPR, 120 s per pick). La draft 2026 si è conclusa il 9 settembre, quindi la prossima è attesa verso settembre 2027: c'è quasi un anno di margine. Uso personale, non SaaS. I dettagli verificati e cosa si semplifica sono nella sezione <a href="#topina" data-sec="topina">La tua lega: Topina</a>.</p></div>
+  <div class="callout warn"><p><b>Cosa resta da misurare.</b> Il comportamento dell'API <em>durante</em> una draft live non è osservabile ora che tutte le draft sono finite. Serve uno Spike 0 su una lega di test, più un Mock Provider fedele al formato ESPN verificato: così lo sviluppo non dipende dal calendario e a settembre 2027 il sistema è già collaudato.</p></div>
+</section>
+
+<section id="prodotto" data-n="01" data-t="Product overview">
+  <h2>Product overview <small>01</small></h2>
+  <p><b>Cos'è:</b> una draft room di secondo schermo, in sola lettura, collegata a una lega ESPN. Si fa la pick su ESPN; Draft War Room mostra board, roster, disponibili, stato di sincronizzazione e un motore di raccomandazione che ragiona sulla <em>tua</em> lega (scoring, slot, ordine delle pick).</p>
+  <p><b>Perché in sola lettura:</b> inviare pick a ESPN richiederebbe endpoint di scrittura non documentati e autenticati. Il rischio di azioni sbagliate durante una draft vera, oltre al rischio ToS, è sproporzionato rispetto al beneficio. La decisione si può rivedere in Fase 3, ma resta fuori dall'MVP.</p>
+  <div class="grid2">
+    <div class="card"><h4>Utente target</h4><p>Il manager che durante una draft di 1–3 ore vuole sapere in un colpo d'occhio chi è on the clock, cosa gli serve e cosa probabilmente sparirà prima della sua prossima pick.</p></div>
+    <div class="card"><h4>Promessa del prodotto</h4><p>Ogni pick fatta su ESPN compare qui in pochi secondi, senza refresh. Quando i dati non sono live, l'interfaccia lo dichiara: nessun dato viene mostrato come live se non lo è.</p></div>
+  </div>
+  <h3>Flusso end-to-end</h3>
+  <div class="flow"><span>Login</span><b>→</b><span>Connect ESPN</span><b>→</b><span>Select League</span><b>→</b><span>Preview</span><b>→</b><span>Open Draft Room</span><b>→</b><span>Sync Engine</span><b>→</b><span>Normalize</span><b>→</b><span>Postgres + outbox</span><b>→</b><span>Redis Stream</span><b>→</b><span>SSE</span><b>→</b><span>Live pick</span></div>
+  <div class="timeline" aria-label="Esempio di sequenza temporale">
+    <div><time>16:04:21.3</time><span>ESPN: pick 42 — Team A seleziona Player X (visibile nell'API)</span></div>
+    <div><time>16:04:22.1</time><span>Sync worker: poll rileva picks[42], valida contiguità 1..42, commit tx + 4 eventi in outbox</span></div>
+    <div><time>16:04:22.1</time><span>Redis XADD → gateway → SSE <code>id: 318</code> DRAFT_PICK_CREATED</span></div>
+    <div><time>16:04:22.2</time><span>Browser: reducer applica seq 318–321 nello stesso frame</span></div>
+    <div><time>16:04:22.2</time><span>Board aggiornata · Player X rimosso dai disponibili · roster di Team A aggiornato</span></div>
+    <div><time>16:04:22.2</time><span>Current pick → 43 · on the clock → Team B · clock stimato riparte</span></div>
+  </div>
+</section>
+
+<section id="fattibilita" data-n="02" data-t="Feasibility ESPN">
+  <h2>Fattibilità dell'integrazione ESPN <small>02</small></h2>
+  <p>Ogni affermazione porta un'etichetta. <span class="tag v">VERIFIED</span> significa verificato direttamente il 19/09/2026 con richieste HTTP reali, oppure letto nel sorgente di librerie mantenute. <span class="tag l">LIKELY</span> significa ampiamente riportato ma non testato qui. <span class="tag u">UNVERIFIED</span> significa da misurare. <span class="tag a">ASSUMPTION</span> è una scelta di progetto.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Tema</th><th>Stato</th><th>Cosa sappiamo</th></tr></thead>
+    <tbody>
+      <tr><td>API ufficiale pubblica</td><td><span class="tag l">LIKELY</span></td><td>Non esiste un programma developer né una documentazione per ESPN Fantasy. L'unica via è l'API interna v3 usata dal sito, che la community sfrutta da anni (librerie <code>espn-api</code> in Python, <code>ffscrapr</code> in R).</td></tr>
+      <tr><td>Host API v3</td><td><span class="tag v">VERIFIED</span></td><td><code>https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl</code> risponde 200. Il vecchio <code>fantasy.espn.com/apis/v3/…</code> restituisce <b>302 → www.espn.com/fantasy/</b>. È la prova concreta che servono un adapter e un host configurabile.</td></tr>
+      <tr><td>Lega pubblica senza auth</td><td><span class="tag v">VERIFIED</span></td><td>La lega pubblica 899513 restituisce settings, teams, members e draftDetail completi senza cookie (<code>x-fantasy-role: NONE</code>).</td></tr>
+      <tr><td>Lega privata</td><td><span class="tag v">VERIFIED</span></td><td>Senza auth risponde <b>401</b> con <code>{"type":"AUTH_LEAGUE_NOT_VISIBLE"}</code>.</td></tr>
+      <tr><td>Auth lega privata</td><td><span class="tag l">LIKELY</span></td><td>Servono i cookie <code>espn_s2</code> e <code>SWID</code> di un membro della lega: <code>espn-api</code> solleva “espn_s2 and swid are required”. Durata di <code>espn_s2</code>: <span class="tag u">UNVERIFIED</span>.</td></tr>
+      <tr><td>CORS</td><td><span class="tag v">VERIFIED</span></td><td>ESPN riflette l'<code>Origin</code> con <code>access-control-allow-credentials: true</code>. Le chiamate dirette dal browser però non riceverebbero i cookie ESPN (cookie di terze parti, SameSite) <span class="tag a">ASSUMPTION</span>. In ogni caso non vogliamo esporre token ai client: si passa da un <b>backend proxy</b>.</td></tr>
+      <tr><td>Rate limiting</td><td><span class="tag v">VERIFIED</span> / <span class="tag u">UNVERIFIED</span></td><td>Davanti c'è CloudFront (<code>x-cache</code>) e nessun header di rate limit nelle risposte. Le soglie reali non sono documentate: va trattato come budget prudente (≤ 1 req/s per draft) e ogni 429/403 va gestito.</td></tr>
+      <tr><td>Caching HTTP</td><td><span class="tag v">VERIFIED</span></td><td>Endpoint di lega: <code>cache-control: must-revalidate</code>, ETag debole presente. Player pool: <code>max-age=300</code>. Il supporto a <code>If-None-Match</code> → 304 è <span class="tag u">UNVERIFIED</span>.</td></tr>
+      <tr><td>Header di change detection</td><td><span class="tag v">VERIFIED</span> / <span class="tag u">UNVERIFIED</span></td><td><code>access-control-expose-headers</code> elenca <code>X-Fantasy-Last-Update-League</code> e <code>Polling-Interval</code>, ma non erano presenti nelle risposte osservate. Durante una draft live potrebbero dare un segnale di cambiamento economico o un intervallo di polling suggerito: da verificare nello Spike 0.</td></tr>
+      <tr><td>Pick live via API</td><td><span class="tag l">LIKELY</span></td><td>Tool di terze parti descrivono l'uso di <code>mDraftDetail</code> per board live. Che <code>picks[]</code> cresca pick-per-pick con <code>inProgress: true</code>, e con quale ritardo, è <span class="tag u">UNVERIFIED</span>.</td></tr>
+      <tr><td>Canale realtime della draft room ESPN</td><td><span class="tag u">UNVERIFIED</span></td><td>Il client della draft room ESPN probabilmente usa un canale live proprio. FFDraftPro (estensione Chrome) dichiara di “ascoltare la draft room ESPN”: è la base della Fase 2 (companion extension).</td></tr>
+      <tr><td>Countdown</td><td><span class="tag v">VERIFIED</span> / <span class="tag u">UNVERIFIED</span></td><td><code>draftSettings.timePerSelection</code> (es. 60) esiste. Nel payload di draft completate non c'è un campo “scadenza pick corrente”, e le pick non hanno timestamp. Il countdown è quindi <b>stimato</b> e l'interfaccia lo etichetta come tale.</td></tr>
+      <tr><td>ToS / legale</td><td><span class="tag u">UNVERIFIED</span></td><td>L'accesso automatizzato a servizi Disney/ESPN può essere vietato dai Termini d'uso. Per il SaaS commerciale serve una revisione legale prima del lancio. Mitigazioni: accesso solo su iniziativa dell'utente e con la sua credenziale, budget di richieste basso, dati visibili solo ai membri della lega, analytics basati su fonti aperte.</td></tr>
+    </tbody>
+  </table></div>
+  <h3>Pubblica vs privata; prima, durante e dopo la draft</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Fase</th><th>Segnale ESPN</th><th>Stato</th><th>Comportamento dell'app</th></tr></thead>
+    <tbody>
+      <tr><td>Prima (scheduled)</td><td><code>drafted:false, inProgress:false</code>, <code>draftSettings.date</code> nel futuro</td><td><span class="tag l">LIKELY</span></td><td>Poll ogni 60 s; ogni 15 s da T−10 min; ogni 3 s da T−1 min. Keeper già presenti nelle pick (<code>keeper</code>, <code>reservedForKeeper</code>).</td></tr>
+      <tr><td>Durante</td><td><code>inProgress:true</code>, <code>picks[]</code> crescente</td><td><span class="tag u">UNVERIFIED</span></td><td>Polling adattivo 1–3 s, diff, eventi.</td></tr>
+      <tr><td>Pausa</td><td>nessun campo osservato</td><td><span class="tag u">UNVERIFIED</span></td><td>Euristica: nessuna pick per più di 3× <code>timePerSelection</code> → badge “possibile pausa”, polling a 5 s.</td></tr>
+      <tr><td>Dopo</td><td><code>drafted:true, inProgress:false, completeDate</code></td><td><span class="tag v">VERIFIED</span></td><td>DRAFT_COMPLETED, riconciliazione finale dopo 60 s, stop del polling.</td></tr>
+      <tr><td>Lega privata</td><td>401 senza cookie</td><td><span class="tag v">VERIFIED</span></td><td>Serve la credenziale cifrata di almeno un membro connesso.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="endpoint" data-n="03" data-t="Endpoint analysis">
+  <h2>ESPN API / endpoint analysis <small>03</small></h2>
+  <p>Tutti i percorsi sono relativi a <code>https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl</code>. Parametri multipli come <code>view=a&amp;view=b</code> si combinano in una sola richiesta <span class="tag v">VERIFIED</span>.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Esigenza</th><th>Richiesta</th><th>Campi utili</th><th>Stato</th></tr></thead>
+    <tbody>
+      <tr><td>Identificare la lega</td><td>URL ESPN della lega: <code>…/football/league?leagueId=NNN</code> → estrai <code>leagueId</code></td><td>—</td><td><span class="tag l">LIKELY</span></td></tr>
+      <tr><td>Identificare la season</td><td><code>GET /seasons/{year}</code></td><td><code>id</code> (2026), <code>active</code>, <code>currentScoringPeriod.id</code>, <code>startDate</code></td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>Storico stagioni</td><td>lega · <code>status.previousSeasons[]</code></td><td>es. <code>[2018…2025]</code></td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>League settings</td><td><code>/seasons/{y}/segments/0/leagues/{id}?view=mSettings</code></td><td><code>settings.draftSettings</code> {type SNAKE|AUCTION, pickOrder[], timePerSelection, date, auctionBudget, keeperCount, orderType}, <code>rosterSettings.lineupSlotCounts</code>, <code>scoringSettings.scoringItems</code></td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>Team e membri</td><td><code>?view=mTeam</code></td><td><code>teams[]</code> {id, abbrev, name, owners[], primaryOwner, logo}, <code>members[]</code> {id in formato SWID <code>{GUID}</code>, displayName}</td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>Draft status</td><td><code>?view=mDraftDetail</code></td><td><code>draftDetail</code> {drafted, inProgress, completeDate}</td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>Draft picks</td><td><code>?view=mDraftDetail</code></td><td><code>picks[]</code> {id, overallPickNumber, roundId, roundPickNumber, teamId, playerId, memberId, autoDraftTypeId, bidAmount, nominatingTeamId, keeper, reservedForKeeper, lineupSlotId, tradeLocked}. Nessun timestamp per pick.</td><td><span class="tag v">VERIFIED</span> (SNAKE e AUCTION completate)</td></tr>
+      <tr><td>Roster</td><td><code>?view=mRoster</code></td><td><code>teams[].roster.entries[]</code>. Durante la draft il roster si <b>deriva dalle pick</b> e non serve fare polling.</td><td><span class="tag l">LIKELY</span></td></tr>
+      <tr><td>Player pool globale</td><td><code>/seasons/{y}/players?scoringPeriodId=0&amp;view=players_wl</code> + header <code>X-Fantasy-Filter: {"filterActive":{"value":true}}</code></td><td>2640 giocatori: id, fullName, defaultPositionId, proTeamId, eligibleSlots, ownership.percentOwned</td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>Rank, ADP, proiezioni</td><td>lega · <code>?view=kona_player_info&amp;scoringPeriodId=0</code> + <code>X-Fantasy-Filter: {"players":{"limit":300,"sortDraftRanks":{"sortPriority":100,"sortAsc":true,"value":"PPR"}}}</code></td><td><code>draftRanksByRankType</code>.{STANDARD,PPR,SUPERFLEX}.rank/auctionValue, <code>ownership.averageDraftPosition</code>, <code>injuryStatus</code>, <code>stats[]</code> (statSourceId 1 = proiezione <span class="tag l">LIKELY</span>), <code>onTeamId</code></td><td><span class="tag v">VERIFIED</span></td></tr>
+      <tr><td>Player pool senza lega</td><td><code>/seasons/{y}/segments/0/leaguedefaults/{n}?view=kona_player_info</code></td><td>Stessa struttura. Quale scoring corrisponde a ogni <code>n</code> è <span class="tag u">UNVERIFIED</span>.</td><td><span class="tag v">VERIFIED</span> (n=1,3 → 200)</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout"><p><b>Scoperta concreta:</b> il player pool dipende dai settings della lega. La lega 899513 usa i “Team QB” (<code>defaultPositionId 15</code>, id negativi come <code>-15002</code> = Bills TQB), quindi <code>kona_player_info</code> <em>non restituisce singoli QB</em>. L'adapter deve leggere <code>lineupSlotCounts</code> e il pool della lega specifica, mai un pool generico <span class="tag v">VERIFIED</span>.</p></div>
+  <h3>Algoritmi derivati</h3>
+  <ul>
+    <li><b>Draft ID interno:</b> ESPN ha una sola draft per lega e stagione, quindi <code>draftKey = espn:{leagueId}:{season}</code> <span class="tag a">ASSUMPTION</span> (coerente con i dati osservati).</li>
+    <li><b>Pick corrente:</b> è il primo slot 1..N senza giocatore valido. Non va calcolata come <code>picks.length + 1</code>, perché i keeper possono occupare slot futuri. Se ESPN elenca slot futuri con <code>playerId</code> nullo, 0 o −1 (<span class="tag u">UNVERIFIED</span>), vanno esclusi. Il team on the clock viene da <code>teamId</code> dello slot, se presente, perché gestisce le pick scambiate; altrimenti da snake su <code>pickOrder</code>: round dispari in avanti, pari al contrario.</li>
+    <li><b>Nuova pick:</b> diff per <code>overallPickNumber</code> tra lo snapshot e il DB (§07).</li>
+    <li><b>Draft terminata:</b> <code>drafted && !inProgress</code>, oppure tutti gli slot <code>teams × rounds</code> pieni.</li>
+    <li><b>Id player:</b> positivi per i giocatori, negativi per le entità di squadra (TQB <code>-15xxx</code> <span class="tag v">VERIFIED</span>, D/ST <code>-16xxx</code> <span class="tag l">LIKELY</span>).</li>
+  </ul>
+  <h3>Spike 0: come verificare ciò che è UNVERIFIED</h3>
+  <ol>
+    <li>Crea una lega privata di test (tu come LM, 4–6 team). Possibilità di crearla a stagione in corso: <span class="tag u">UNVERIFIED</span>. In alternativa la prossima finestra reale è luglio–agosto 2027.</li>
+    <li>Programma la draft con timer di 30 s e lascia l'autodraft agli altri team.</li>
+    <li>Registra un poller (<code>view=mDraftDetail</code>) ogni 1 s con timestamp, response header completi ed ETag. In parallelo registra un HAR della draft room ESPN da DevTools per osservare il canale live.</li>
+    <li>Misura: ritardo tra la pick nel client ESPN e la comparsa in API, rappresentazione degli slot futuri, campi in-progress, presenza di <code>X-Fantasy-Last-Update-League</code> e <code>Polling-Interval</code>, risposta a <code>If-None-Match</code>, 429 oltre 2 req/s.</li>
+    <li>Salva le risposte come <b>fixture</b> per i contract test (§16).</li>
+  </ol>
+</section>

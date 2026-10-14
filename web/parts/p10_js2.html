@@ -1,0 +1,327 @@
+/* ================= analytics (client) ================= */
+function myNextAfter(cur){const s=ORDER.find(s=>s.overall>cur&&s.teamId===MY);return s?s.overall:null}
+function surv(p,cur,next){
+  if(!next)return 0;
+  const adp=p.adp>0?p.adp:p.rank*1.1+10,sd=p.sd||Math.max(2,adp*0.2);
+  const num=1-Phi((next-adp)/sd),den=1-Phi((cur-adp)/sd);
+  return Math.max(0,Math.min(1,num/Math.max(den,1e-6)))}
+function rosterOf(teamId){const out=[];[...Client.picks.values()].sort((a,b)=>a.overall-b.overall).forEach(pk=>{if(pk.teamId===teamId)out.push(PBY.get(pk.playerId))});return out}
+function needFactor(pos,roster,round){
+  const c=roster.filter(p=>p.pos===pos).length,start={QB:1,RB:2,WR:2,TE:1,K:1,DST:1}[pos];
+  if(pos==='K'||pos==='DST')return c>=1?0.02:(round>=12?1:0.05);
+  if(c<start)return 1;
+  const flexFilled=['RB','WR'].reduce((s,x)=>s+Math.max(0,roster.filter(p=>p.pos===x).length-({RB:2,WR:2}[x])),0)>=1;   // FLEX = RB/WR (no TE)
+  if(['RB','WR'].includes(pos)&&!flexFilled)return 0.8;
+  return{QB:0.25,TE:0.3,RB:0.6,WR:0.6}[pos]}
+function computeRecs(){
+  if(!Client.current)return[];
+  const cur=Client.current.overall,next=myNextAfter(cur),round=Client.current.round;
+  const dm=Client.draftedMap(),avail=PLAYERS.filter(p=>!dm.has(p.id));
+  const roster=rosterOf(MY);
+  const byPos={};avail.forEach(p=>{(byPos[p.pos]=byPos[p.pos]||[]).push(p)});
+  Object.values(byPos).forEach(a=>a.sort((x,y)=>y.vorp-x.vorp));
+  const S=new Map(avail.map(p=>[p.id,surv(p,cur,next)]));
+  const expBest=(pos,excl)=>{let e=0,rem=1;for(const q of byPos[pos]||[]){if(q.id===excl)continue;const s=S.get(q.id);e+=Math.max(q.vorp,0)*s*rem;rem*=(1-s);if(rem<0.01)break}return e};
+  return avail.slice(0,70).map(p=>{
+    const s=S.get(p.id),vona=p.vorp-expBest(p.pos,p.id),need=needFactor(p.pos,roster,round);
+    const score=need*(0.45*Math.max(p.vorp,0)+0.55*Math.max(vona,0))*(0.7+0.3*(1-s));
+    return{p,s,vona:Math.round(vona),need,score}}).sort((a,b)=>b.score-a.score).slice(0,4)}
+
+/* ================= UI ================= */
+const UI={d:new Set(),raf:0,lock:false,visible:false,rosterTeam:MY,watch:new Set(),cellKey:new Map(),
+  f:{pos:'ALL',q:'',nfl:'',avail:true,watch:false,sort:'rank',dir:1},logF:'all',logHb:false,
+  dirty(...k){k.forEach(x=>this.d.add(x));if(!this.raf)this.raf=requestAnimationFrame(()=>this.flush())},
+  flush(){this.raf=0;const d=this.d;this.d=new Set();const a=d.has('all');
+    if(a||d.has('hdr'))renderHeader();
+    if(a||d.has('hdr')||d.has('hero'))renderHero();
+    if(a){renderBoard();renderTicker();renderRoster();renderNeeds();renderRecs();renderPlayers()}
+    else if(d.has('players'))renderPlayers();
+    if(a||d.has('log'))renderLog();
+    if(a||d.has('hdr'))renderMetrics();
+    if(a&&window.DWR_REFRESH)window.DWR_REFRESH()}};
+
+function health(){
+  if(!Client.connected){const w=Client.retryAt?Math.max(0,Math.ceil((Client.retryAt-now())/1000)):0;return{s:'OFFLINE',m:w?`Trying to reconnect… (${w}s)`:'Trying to reconnect…'}}
+  const age=now()-Client.lastSyncAt,thr=Math.max(5000,2*Client.pollIv+1000);
+  if(Client.serverHealth==='ERROR'&&age>15000)return{s:'OFFLINE',m:`ESPN non raggiungibile · last sync ${Math.round(age/1000)}s ago`};
+  if(age<=thr&&Client.serverHealth==='LIVE')return{s:'LIVE',m:`ESPN synced ${(age/1000).toFixed(1)}s ago`};
+  if(age<=30000)return{s:'DELAYED',m:`Last successful sync: ${Math.round(age/1000)}s ago`};
+  return{s:'OFFLINE',m:`Last sync ${Math.round(age/1000)}s ago · trying to reconnect…`}}
+
+function renderHeader(){
+  const h=health(),el=$('#sync');el.className='sync '+h.s;$('#sync-s').textContent=h.s;$('#sync-m').textContent=h.m;
+  $('#h-status').textContent={IN_PROGRESS:ESPN.paused?'In corso · pausa sim':'In corso',COMPLETED:'Completata',SCHEDULED:'Programmata'}[Client.status]||Client.status;
+  $('#h-picks').textContent=`${Client.picks.size} / ${TOTAL}`;
+  $('#h-lat').textContent=Client.providerLat?Client.providerLat+' ms':'—';
+  $('#h-iv').textContent=(Client.pollIv/1000).toFixed(1)+' s adattivo'}
+
+function renderHero(){
+  const hero=$('#hero'),h=health(),c=Client.current;
+  hero.classList.toggle('stale',h.s!=='LIVE');hero.classList.toggle('offline',h.s==='OFFLINE');
+  $('#stalebar').textContent=h.s==='OFFLINE'?'OFFLINE · questi dati potrebbero non essere aggiornati':'DELAYED · sync ESPN in ritardo, il clock è sospeso';
+  if(!c){hero.classList.remove('mine');$('#hr').textContent=Client.status==='COMPLETED'?ROUNDS:'—';$('#hp').textContent=Client.status==='COMPLETED'?TOTAL:'—';$('#hl').textContent='';
+    $('#otc').textContent=Client.status==='COMPLETED'?'DRAFT COMPLETATA':'IN ATTESA';$('#htn').textContent=Client.status==='COMPLETED'?`Tutte le ${TOTAL} pick registrate`:'—';
+    $('#ht').textContent='—';$('#hbar').style.width='0%';$('#hnext').innerHTML='';return}
+  const mine=c.teamId===MY;hero.classList.toggle('mine',mine);
+  $('#hr').textContent=c.round;$('#hp').textContent=c.overall;$('#hl').textContent=pickLabel(c.overall);
+  $('#otc').textContent='ON THE CLOCK';$('#htn').textContent=TBY.get(c.teamId).name;
+  const cl=Client.clock;
+  if(cl&&h.s==='LIVE'&&!ESPN.paused){const rem=Math.max(0,cl.expiresAt-now()),s=Math.ceil(rem/1000);
+    $('#ht').textContent=`0:${String(s).padStart(2,'0')}`;$('#ht').classList.toggle('low',s<=5);$('#hbar').style.width=(rem/(CLOCK*1000)*100)+'%'}
+  else{$('#ht').textContent='--:--';$('#ht').classList.remove('low')}
+  $('#hsub').textContent=`Clock stimato · ${CLOCK}s per pick (demo) · ESPN non espone la scadenza`;
+  const nx=ORDER.slice(c.overall,c.overall+3).map(s=>s.teamId===MY?'<b style="color:#3CC7F5">TU</b>':esc(TBY.get(s.teamId).abbr));
+  const nm=mine?c.overall:myNextAfter(c.overall);
+  $('#hnext').innerHTML=`Poi: <b>${nx.join(' · ')}</b>${nm?` &nbsp;|&nbsp; ${mine?'<b style="color:#F2D82E">Scegli ora: pulsante “Draft (sim)” nella lista</b>':`Tu tra <b>${nm-c.overall}</b> pick (${pickLabel(nm)})`}`:''}`}
+
+function buildBoard(){
+  let h='<div class="bh">R</div>';
+  for(let i=0;i<N;i++){const t=TBY.get(PICK_ORDER[i]);h+=`<div class="bh${t.id===MY?' me':''}" title="${esc(t.name)}">${esc(t.abbr)}${t.id===MY?' · TU':''}</div>`}
+  for(let r=1;r<=ROUNDS;r++){h+=`<div class="rc">${r}<i>${r%2?'→':'←'}</i></div>`;
+    for(let i=0;i<N;i++){const o=r%2?(r-1)*N+i+1:(r-1)*N+(N-i);h+=`<div class="cell${PICK_ORDER[i]===MY?' mec':''}" id="c${o}"></div>`}}
+  $('#bgrid').innerHTML=h;UI.cellKey.clear()}
+function renderBoard(){
+  const cur=Client.current?Client.current.overall:0;
+  for(let o=1;o<=TOTAL;o++){
+    const pk=Client.picks.get(o),key=(pk?pk.playerId+':'+pk.revision:'-')+'|'+(o===cur);
+    if(UI.cellKey.get(o)===key&&!Client.flash.has(o))continue;
+    UI.cellKey.set(o,key);
+    const el=document.getElementById('c'+o),mec=ORDER[o-1].teamId===MY;
+    let cls='cell'+(mec?' mec':'');
+    if(pk){cls+=' f p-'+pk.position;el.innerHTML=`<span class="cn">${pickLabel(o)}</span><span class="cp">${esc(shortName(pk.playerName))}</span><span class="cm">${pk.position} · ${pk.nflTeam}</span>`;el.title=`${pickLabel(o)} ${pk.teamName} — ${pk.playerName}`}
+    else if(o===cur){cls+=' cur';el.innerHTML=`<span class="cn">${pickLabel(o)}</span><span class="cp">ON THE CLOCK</span><span class="cm"></span>`;el.title=''}
+    else{el.innerHTML=`<span class="cn">${pickLabel(o)}</span>`;el.title=''}
+    if(Client.flash.has(o)){cls+=' flash';setTimeout(()=>el.classList.remove('flash'),1500)}
+    el.className=cls}
+  Client.flash.clear();
+  if(!UI.lock)scrollToCurrent(false)}
+function scrollToCurrent(force){
+  const cur=Client.current?Client.current.overall:Client.picks.size;if(!cur)return;
+  const el=document.getElementById('c'+cur),b=$('#board');if(!el)return;
+  const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+  UI.progScroll=now();
+  b.scrollTo({top:Math.max(0,el.offsetTop-90),left:Math.max(0,el.offsetLeft-b.clientWidth/2+50),behavior:reduce||force?'auto':'smooth'})}
+function setLock(v){UI.lock=v;$('#btn-lock').textContent='Auto-scroll: '+(v?'bloccato':'on');$('#btn-lock').classList.toggle('on',v);$('#jump').hidden=!v;if(!v)scrollToCurrent(true)}
+
+function renderTicker(){
+  const list=[...Client.picks.values()].sort((a,b)=>b.overall-a.overall).slice(0,10);
+  const lp=Client.lastPickInfo;
+  $('#ticker').innerHTML=list.map(pk=>{const ap=Client.applied.get(pk.overall);
+    const fresh=lp&&lp.overall===pk.overall&&now()-lp.at<1500;
+    const lat=ap&&ap.made?`rilevata +${((pk.detectedAt-ap.made)/1000).toFixed(1)}s dalla pick ESPN · UI +${ap.at-ap.emitted}ms`:(pk.source==='PROVIDER_RESYNC'?'recuperata via resync':'da snapshot');
+    return`<li class="${fresh?'new':''} ${pk.teamId===MY?'me':''}"><time>${fmtHMS(pk.detectedAt)}</time><b>Pick ${pk.overall}</b> — <b class="t">${esc(pk.teamName)}</b> seleziona <b>${esc(pk.playerName)}</b> <span class="pos pos-${pk.position}">${pk.position}</span><small>${lat}</small></li>`}).join('')||'<li>Nessuna pick ancora.</li>';
+  const lpk=lp&&Client.picks.get(lp.overall);
+  if(lpk){const el=$('#lastpick');el.innerHTML=`Ultima: <b>${pickLabel(lpk.overall)}</b> ${esc(lpk.teamName)} → <b>${esc(lpk.playerName)}</b> <span class="pos pos-${lpk.position}">${lpk.position}</span>`;
+    if(now()-lp.at<300){el.classList.remove('pop');void el.offsetWidth;el.classList.add('pop')}}}
+
+function renderRoster(){
+  const sel=$('#roster-team');
+  if(!sel.options.length)sel.innerHTML=TEAMS.map(t=>`<option value="${t.id}">${esc(t.name)}${t.id===MY?' (tu)':''}</option>`).join('');
+  sel.value=UI.rosterTeam;
+  const pl=rosterOf(UI.rosterTeam),used=new Set();
+  const slots=[['QB',['QB']],['RB',['RB']],['RB',['RB']],['RB/WR',['RB','WR']],['WR',['WR']],['WR',['WR']],['TE',['TE']],['D/ST',['DST']],['K',['K']]];
+  const rows=slots.map(([l,el])=>{const p=pl.find(x=>!used.has(x.id)&&el.includes(x.pos));if(p)used.add(p.id);return[l,p,false]});
+  const bench=pl.filter(p=>!used.has(p.id));for(let i=0;i<6;i++)rows.push(['BE',bench[i],true]);
+  const byes={};rows.slice(0,9).forEach(([,p])=>{if(p&&p.bye)byes[p.bye]=(byes[p.bye]||0)+1});
+  const warn=Object.entries(byes).filter(([,n])=>n>=3).map(([w,n])=>`Bye week ${w}: ${n} titolari`).join(' · ');
+  $('#roster').innerHTML=`<div style="font-size:12px;color:#8593A2;margin-bottom:4px">${pl.length}/15 giocatori</div><table class="rs">${rows.map(([l,p,be])=>`<tr class="${be?'be':''}"><td>${l}</td>${p?`<td><span class="pos pos-${p.pos}">${p.pos}</span> ${esc(p.name)} <span class="bye">${p.nfl}${p.bye?' · bye '+p.bye:''}</span></td>`:'<td class="e">—</td>'}</tr>`).join('')}</table>${warn?`<div class="warnline">⚠ ${warn}</div>`:''}`}
+
+function renderNeeds(){
+  const cur=Client.current?Client.current.overall:TOTAL+1,next=myNextAfter(cur-1);
+  const before=new Set(ORDER.filter(s=>s.overall>=cur&&next&&s.overall<next&&s.teamId!==MY).map(s=>s.teamId));
+  const P=['QB','RB','WR','TE','K','DST'];
+  let h='<tr><th>Team</th>'+P.map(p=>`<th>${p}</th>`).join('')+'</tr>';
+  const noQB=[];
+  PICK_ORDER.forEach(tid=>{const r=rosterOf(tid),t=TBY.get(tid);
+    const cells=P.map(p=>{const n=r.filter(x=>x.pos===p).length;const z=n===0&&['QB','TE'].includes(p)&&Client.picks.size>=30;return`<td class="${z?'z':''}">${n||'·'}</td>`}).join('');
+    if(before.has(tid)&&!r.some(x=>x.pos==='QB'))noQB.push(t.abbr);
+    h+=`<tr class="${before.has(tid)?'bf':''} ${tid===MY?'me':''}"><td title="${esc(t.name)}">${esc(t.name)}</td>${cells}</tr>`});
+  $('#needs').innerHTML=h;
+  const last=[...Client.picks.values()].sort((a,b)=>b.overall-a.overall).slice(0,8);
+  const cnt={};last.forEach(p=>cnt[p.position]=(cnt[p.position]||0)+1);
+  const run=Object.entries(cnt).sort((a,b)=>b[1]-a[1])[0];
+  let ins=[];
+  if(next&&Client.current)ins.push(`<div>Prima della tua prossima pick (${pickLabel(next)}) scelgono <b>${before.size}</b> team.</div>`);
+  if(noQB.length>=2)ins.push(`<div>${noQB.length} di loro non hanno un QB (${noQB.join(', ')}): rischio run sui QB.</div>`);
+  if(run&&run[1]>=4)ins.push(`<div>Run in corso: <b>${run[0]}</b> in ${run[1]} delle ultime 8 pick.</div>`);
+  $('#insight').innerHTML=ins.join('')||'<div>Nessun segnale rilevante.</div>'}
+
+function renderRecs(){
+  const r=computeRecs(),c=Client.current;
+  if(!c){$('#recs').innerHTML='<div style="color:#8593A2">Draft completata.</div>';return}
+  const next=myNextAfter(c.overall);
+  $('#recs').innerHTML=r.map((x,i)=>{const p=x.p,tags=[`VORP ${p.vorp>=0?'+':''}${p.vorp}`,`VONA ${x.vona>=0?'+':''}${x.vona}`,next?`${Math.round(x.s*100)}% disponibile a ${pickLabel(next)}`:'ultima pick',x.need>=1?'riempie starter':x.need>=0.8?'FLEX':'panchina'];if(p.inj)tags.push('infortunio '+p.inj);
+    return`<div class="rec"><span class="i">${i+1}</span><span class="n"><span class="pos pos-${p.pos}">${p.pos}</span> ${esc(p.name)} <span style="color:#8593A2;font-weight:400">${p.nfl}</span></span><span class="s">${Math.round(x.score)}</span><div class="tags">${tags.map(t=>`<span>${t}</span>`).join('')}</div></div>`}).join('')}
+
+const COLS=[['',''],['Rk','rank',1],['Giocatore','name'],['Pos','pos'],['NFL','nfl'],['Bye','bye',1],['ADP','adp',1],['Proj','proj',1],['VORP','vorp',1],['Disp. tua pick','surv',1],['','']];
+function renderPlayers(){
+  const f=UI.f,dm=Client.draftedMap(),c=Client.current,cur=c?c.overall:TOTAL,next=c?myNextAfter(cur):null,myTurn=c&&c.teamId===MY&&ESPN.status==='IN_PROGRESS';
+  $('#phead').innerHTML=COLS.map(([l,k,n])=>`<th data-k="${k}" class="${n?'num':''} ${k&&f.sort===k?'s'+(f.dir>0?' asc':''):''}">${l}</th>`).join('');
+  let list=PLAYERS.filter(p=>(f.pos==='ALL'||p.pos===f.pos||(f.pos==='FLEX'&&['RB','WR','TE'].includes(p.pos)))&&(!f.nfl||p.nfl===f.nfl)&&(!f.q||p.name.toLowerCase().includes(f.q))&&(!f.avail||!dm.has(p.id)||Client.leaving.has(p.id))&&(!f.watch||UI.watch.has(p.id)));
+  list.forEach(p=>{p._s=dm.has(p.id)?0:surv(p,cur,next)});
+  const k=f.sort==='surv'?'_s':f.sort;
+  list.sort((a,b)=>{let x=a[k],y=b[k];if(k==='adp'){x=x||999;y=y||999}if(k==='bye'){x=x||99;y=y||99}return(typeof x==='string'?x.localeCompare(y):x-y)*f.dir});
+  $('#pcount').textContent=`${list.length} mostrati · ${PLAYERS.length-dm.size} disponibili`;
+  $('#pbody').innerHTML=list.map(p=>{const pk=dm.get(p.id),gone=Client.leaving.has(p.id);const s=Math.round(p._s*100);
+    const act=pk?`<span style="font-size:11px">${esc(TBY.get(pk.teamId).abbr)} ${pickLabel(pk.overall)}</span>`:myTurn?`<button class="dbtn" data-pick="${p.id}">Draft (sim)</button>`:'';
+    return`<tr data-id="${p.id}" class="${pk?'dr':''} ${gone?'gone':''}"><td><button class="star ${UI.watch.has(p.id)?'on':''}" data-star="${p.id}" aria-label="Watchlist">★</button></td><td class="num">${p.rank<999?p.rank:'—'}</td><td><b>${esc(p.name)}</b>${window.DWR_MEMO?window.DWR_MEMO(p.id):''}${p.inj?`<span class="inj">${p.inj}</span>`:''}</td><td><span class="pos pos-${p.pos}">${p.pos}</span></td><td>${p.nfl}</td><td class="num">${p.bye||'—'}</td><td class="num">${p.adp||'—'}</td><td class="num">${p.proj||'—'}</td><td class="num ${p.vorp<0?'vorp-neg':''}">${p.vorp>0?'+':''}${p.vorp}</td><td class="num">${pk?'—':`<span class="pbar"><i class="${s<25?'lo':s<60?'mid':''}" style="width:${s}%"></i></span>${s}%`}</td><td>${act}</td></tr>`}).join('')}
+
+function renderLog(){
+  const f=UI.logF;
+  const rows=LOG.filter(e=>(e.cat!=='hb'||UI.logHb)&&(f==='all'||e.cat===f||(f==='client'&&e.cat==='client')||(f==='sync'&&(e.cat==='sync'||e.cat==='hb')))).slice(-160).reverse();
+  $('#log').innerHTML=rows.map(e=>`<div class="${e.level}"><time>${fmtT(e.t)}</time><span><span class="ty">${e.type}</span> <span class="tx">${esc(e.text)}</span></span></div>`).join('')}
+function renderMetrics(){
+  const m=[['Pick elaborate',M.picks],['Eventi (seq)',DB.seq],['Last seq client',Client.lastSeq],['Poll ESPN',M.polls],['Errori ESPN',M.errors],['Gap recuperati',M.gaps],['Duplicati scartati',M.dups],['Riordini',M.reorders],['Resync',M.resyncs]];
+  $('#metrics').innerHTML=m.map(([l,v])=>`<div><small>${l}</small><b>${v}</b></div>`).join('')}
+
+/* ================= controls ================= */
+function initControls(){
+  const chips=['ALL','QB','RB','WR','TE','FLEX','K','DST'];
+  $('#poschips').innerHTML=chips.map(c=>`<button data-pos="${c}" class="${c==='ALL'?'on':''}">${c==='ALL'?'Tutti':c}</button>`).join('');
+  $('#nfl').innerHTML+=[...new Set(PLAYERS.map(p=>p.nfl))].sort().map(t=>`<option>${t}</option>`).join('');
+  const setPos=v=>{UI.f.pos=v;document.querySelectorAll('#poschips button').forEach(b=>b.classList.toggle('on',b.dataset.pos===v));UI.dirty('players')};
+  UI.setPos=setPos;
+  $('#poschips').addEventListener('click',e=>{const b=e.target.closest('button');if(b)setPos(b.dataset.pos)});
+  $('#q').addEventListener('input',e=>{UI.f.q=e.target.value.trim().toLowerCase();UI.dirty('players')});
+  $('#nfl').addEventListener('change',e=>{UI.f.nfl=e.target.value;UI.dirty('players')});
+  $('#avail').addEventListener('change',e=>{UI.f.avail=e.target.checked;UI.dirty('players')});
+  $('#watch').addEventListener('change',e=>{UI.f.watch=e.target.checked;UI.dirty('players')});
+  $('#phead').addEventListener('click',e=>{const th=e.target.closest('th');if(!th||!th.dataset.k)return;const k=th.dataset.k;
+    if(UI.f.sort===k)UI.f.dir*=-1;else{UI.f.sort=k;UI.f.dir=['proj','vorp','surv'].includes(k)?-1:1}UI.dirty('players')});
+  $('#pbody').addEventListener('click',e=>{const s=e.target.closest('[data-star]');if(s){const id=+s.dataset.star;UI.watch.has(id)?UI.watch.delete(id):UI.watch.add(id);UI.dirty('players');return}
+    const d=e.target.closest('[data-pick]');if(d)ESPN.userPick(+d.dataset.pick)});
+  $('#roster-team').addEventListener('change',e=>{UI.rosterTeam=+e.target.value;renderRoster()});
+  $('#btn-lock').addEventListener('click',()=>setLock(!UI.lock));
+  $('#btn-cur').addEventListener('click',()=>scrollToCurrent(false));
+  $('#jump').addEventListener('click',()=>setLock(false));
+  const b=$('#board');['wheel','touchmove'].forEach(ev=>b.addEventListener(ev,()=>{if(!UI.lock)setLock(true)},{passive:true}));
+  b.addEventListener('keydown',()=>{if(!UI.lock)setLock(true)});
+  $('#btn-reconnect').addEventListener('click',()=>{log('client','MANUAL_RECONNECT','resync completo richiesto dall\'utente','info');if(Client.connected){Client.loadSnapshot('manual resync')}else{Client.attempt=0;Client.connect()}});
+  $('#sim-pause').addEventListener('click',()=>{ESPN.setPaused(!ESPN.paused);$('#sim-pause').textContent=ESPN.paused?'Riprendi draft':'Pausa draft';$('#sim-pause').classList.toggle('on',ESPN.paused);log('espn','ESPN_DRAFT_'+(ESPN.paused?'PAUSED':'RESUMED'),'[ESPN] draft '+(ESPN.paused?'in pausa':'ripresa'),'espn');UI.dirty('hdr')});
+  $('#sim-reset').addEventListener('click',()=>boot(0));
+  $('#sim-replay').addEventListener('click',()=>{ESPN.replay=!ESPN.replay;const b=$('#sim-replay');b.classList.toggle('on',ESPN.replay);b.textContent=ESPN.replay?'Replay 2026: ON':'Replay draft 2026';
+    log('espn','ESPN_MODE',ESPN.replay?'[demo] rigioco le 60 pick reali del 09/09/2026':'[demo] pick simulate da modello ADP','espn');boot(0)});
+  $('#sim-auto').addEventListener('change',e=>{ESPN.autoMe=e.target.checked});
+  $('#sim-delay').addEventListener('input',e=>{ESPN.delay=+e.target.value;$('#sim-dv').textContent=e.target.value});
+  $('#sim-mode').addEventListener('click',e=>{const bt=e.target.closest('button');if(!bt)return;ESPN.mode=bt.dataset.m;
+    document.querySelectorAll('#sim-mode button').forEach(x=>{x.classList.toggle('on',x===bt);x.classList.toggle('bad',x===bt&&x.dataset.m!=='ok')});
+    log('espn','ESPN_MODE',`[ESPN] l'API risponde ora con: ${bt.textContent}`,'espn')});
+  $('#net-toggle').addEventListener('click',()=>{Net.online=!Net.online;$('#net-toggle').textContent=Net.online?'Disconnetti rete':'Ripristina rete';$('#net-toggle').classList.toggle('on',!Net.online);
+    if(!Net.online){log('client','NETWORK_OFFLINE','window “offline”: rete del browser assente','err');Net.dropClient('rete assente')}
+    else{log('client','NETWORK_ONLINE','window “online” → riconnessione immediata','info');Client.attempt=0;Client.connect()}});
+  $('#net-sleep').addEventListener('click',()=>{if(Client.frozen)return;Client.frozen=true;Net.connected=false;Client.connected=false;$('#sleepov').hidden=false;
+    log('client','LAPTOP_SLEEP','tab congelata: nessun evento ricevuto per 8s','warn');
+    setTimeout(()=>{Client.frozen=false;$('#sleepov').hidden=true;log('client','VISIBILITY_VISIBLE','risveglio → snapshot + riconnessione','info');Client.attempt=0;Client.connect()},8000)});
+  $('#net-restart').addEventListener('click',serverRestart);
+  $('#ch-dup').addEventListener('click',()=>{Net.dupNext=true;log('client','CHAOS','il prossimo evento di dominio verrà consegnato due volte','info')});
+  $('#ch-ooo').addEventListener('click',()=>{Net.reorderNext=true;log('client','CHAOS','i prossimi due eventi arriveranno invertiti','info')});
+  $('#ch-gap').addEventListener('click',()=>{ESPN.gapOnce=true;log('espn','ESPN_STALE_REPLICA','[ESPN] la prossima risposta ometterà la penultima pick (replica CDN incoerente)','espn')});
+  $('#ch-undo').addEventListener('click',()=>{ESPN.undo()});
+  $('#logf').addEventListener('change',e=>{UI.logF=e.target.value;renderLog()});
+  $('#loghb').addEventListener('change',e=>{UI.logHb=e.target.checked;renderLog()});
+  document.addEventListener('keydown',e=>{
+    if(!UI.visible)return;const tag=(e.target.tagName||'').toLowerCase(),typing=tag==='input'||tag==='select'||tag==='textarea';
+    if(e.key==='/'&&!typing){e.preventDefault();$('#q').focus();return}
+    if(e.key==='Escape'&&typing){e.target.blur();return}
+    if(typing||e.metaKey||e.ctrlKey||e.altKey)return;
+    const map={'0':'ALL','1':'QB','2':'RB','3':'WR','4':'TE','5':'K','6':'DST',f:'FLEX',F:'FLEX'};
+    if(map[e.key]){setPos(map[e.key]);return}
+    if(e.key==='w'||e.key==='W'){UI.f.watch=!UI.f.watch;$('#watch').checked=UI.f.watch;UI.dirty('players')}
+    else if(e.key==='l'||e.key==='L')setLock(!UI.lock);
+    else if(e.key==='c'||e.key==='C')scrollToCurrent(false);
+    else if(e.key==='r'||e.key==='R')$('#btn-reconnect').click();
+    else if(e.key===' '){e.preventDefault();$('#sim-pause').click()}})}
+
+/* ================= boot ================= */
+function boot(prefill){
+  clearTimeout(SYNC.timer);clearTimeout(Client.rt);
+  ESPN.picks=[];ESPN.status='IN_PROGRESS';ESPN.etag++;ESPN.gapOnce=false;
+  const t0=now();
+  for(let o=1;o<=prefill;o++){const tid=ORDER[o-1].teamId,p=botChoice(tid,o,tid===MY);ESPN.push(tid,p.id,false,t0-(prefill-o+1)*4200)}
+  ESPN.clockStart=now();ESPN.nextAt=now()+ESPN.delay*1000;
+  DB.picks=new Map();DB.seq=0;DB.ver=0;DB.status='SCHEDULED';DB.current=null;DB.clock=null;STREAM.length=0;
+  Object.assign(SYNC,{running:true,fp:'',failures:0,gapRetries:0,removal:null,stopped:false,health:'LIVE',circuit:'CLOSED',lastChangeAt:now()});
+  Object.assign(Client,{picks:new Map(),lastSeq:0,buffer:new Map(),applied:new Map(),lastPickInfo:null,connected:false});
+  Net.connected=false;Net.held=null;
+  Object.keys(M).forEach(k=>M[k]=0);LOG.length=0;
+  buildBoard();
+  log('sync','WORKER_BOOT','worker: lease Redis acquisito su draft drf_demo_2026 → primo poll ESPN (view=mDraftDetail)','ok');
+  poll().then(()=>{Net.connected=true;Client.connected=true;Client.loadSnapshot('bootstrap SSR');log('client','SSE_OPEN','EventSource aperto · Last-Event-ID: '+Client.lastSeq,'ok');UI.dirty('all')})}
+
+/* ================= page chrome ================= */
+const SHARED=[['profiles','Profili'],['compare','Confronto'],['schedule','Calendario'],['depth','Reparti NFL']];
+const BLOCKS={
+  draft:{label:'Draft',def:'console',own:[['console','Draft room'],['value','Value board'],['scarcity','Scarsità & VORP'],['rivals','Avversari']]},
+  season:{label:'Stagione',def:'myteam',own:[['myteam','La mia rosa'],['teams','Le squadre'],['matchup','Matchup'],['waiver','Waiver'],['trades','Scambi'],['history','Storico'],['review','Analisi squadre'],['memo','Da ricordare']]}};
+const VIEWS=['plan',...new Set([...BLOCKS.draft.own,...BLOCKS.season.own,...SHARED].map(v=>v[0]))];
+const blockOf=v=>BLOCKS.draft.own.some(o=>o[0]===v)?'draft':BLOCKS.season.own.some(o=>o[0]===v)?'season':null;
+let curBlock='draft';
+const lastOf={draft:'console',season:'myteam'};
+
+function renderSubnav(view){
+  const b=BLOCKS[curBlock],sub=document.getElementById('subnav');
+  if(view==='plan'){sub.hidden=true;return}
+  sub.hidden=false;
+  sub.innerHTML=b.own.map(([v,l])=>`<button data-view="${v}" aria-selected="${v===view}">${l}</button>`).join('')
+    +'<span class="sep"></span><span class="shared">anche qui</span>'
+    +SHARED.map(([v,l])=>`<button data-view="${v}" aria-selected="${v===view}">${l}</button>`).join('');
+  document.querySelectorAll('.blocks button').forEach(x=>x.setAttribute('aria-selected',String(x.dataset.block===curBlock)));
+  document.querySelector('.planlink').setAttribute('aria-selected','false');
+}
+function setBlock(b){
+  if(!BLOCKS[b])return;
+  curBlock=b;setView(lastOf[b]||BLOCKS[b].def);
+}
+function setView(v){
+  if(!VIEWS.includes(v))v=BLOCKS[curBlock].def;
+  const own=blockOf(v);
+  if(own)curBlock=own;                       // una pagina propria porta con sé il suo blocco
+  if(v!=='plan')lastOf[curBlock]=v;
+  VIEWS.forEach(x=>{const el=document.getElementById('view-'+x);if(el)el.hidden=x!==v});
+  document.body.classList.toggle('on-plan',v==='plan');
+  renderSubnav(v);
+  if(v==='plan')document.querySelector('.planlink').setAttribute('aria-selected','true');
+  const c=v==='console';UI.visible=c;
+  if(c){if(ESPN.autoPaused)ESPN.setPaused(false);UI.dirty('all');setTimeout(()=>scrollToCurrent(true),50)}
+  else if(!ESPN.paused)ESPN.setPaused(true,true);
+  if(window.DWR_VIEW)window.DWR_VIEW(v);
+  try{history.replaceState(null,'',v==='plan'?location.pathname+location.search:'#'+v)}catch(e){}
+  window.scrollTo(0,0)}
+document.addEventListener('click',e=>{
+  if(e.target.closest('[data-home]')){e.preventDefault();setView(lastOf[curBlock]||BLOCKS[curBlock].def);return}
+  const b=e.target.closest('[data-block]');
+  if(b){e.preventDefault();setBlock(b.dataset.block);return}
+  const g=e.target.closest('[data-goto],[data-view]');
+  if(!g)return;e.preventDefault();setView(g.dataset.goto||g.dataset.view)});
+
+/* ponte verso le pagine di analisi */
+window.DWR={PLAYERS,PBY,Client,ESPN,ORDER,TEAMS,TBY,MY,N,ROUNDS,TOTAL,CLOCK,BASE,REPL,surv,myNextAfter,rosterOf,pickLabel,esc,Phi,UI};
+window.DWR_SETVIEW=setView;
+
+function initDoc(){
+  document.querySelectorAll('script[type="text/x-code"]').forEach(s=>{
+    const w=document.createElement('div');w.className='codewrap';
+    const lab=document.createElement('div');lab.className='cl';lab.textContent=s.dataset.label||'';w.appendChild(lab);
+    const pre=document.createElement('pre');pre.className='code';
+    const txt=s.textContent.replace(/^\n+/,'').replace(/\s+$/,'');
+    pre.innerHTML=txt.split('\n').map(l=>{const m=l.match(/^(.*?)(\s|^)(\/\/.*)$/);return m&&!/['"`][^'"`]*$/.test(m[1])?esc(m[1]+m[2])+'<span class="c">'+esc(m[3])+'</span>':esc(l)}).join('\n');
+    w.appendChild(pre);s.replaceWith(w)});
+  const secs=[...document.querySelectorAll('.doc section[data-n]')];
+  $('#toc').innerHTML=secs.map(s=>`<li><a href="#${s.id}" data-sec="${s.id}"><span>${s.dataset.n}</span>${esc(s.dataset.t)}</a></li>`).join('');
+  $('#toc').addEventListener('click',e=>{const a=e.target.closest('a');if(!a)return;e.preventDefault();document.getElementById(a.dataset.sec).scrollIntoView({behavior:'smooth'})});
+  if('IntersectionObserver'in window){const io=new IntersectionObserver(es=>{es.forEach(en=>{if(en.isIntersecting){document.querySelectorAll('#toc a').forEach(a=>a.classList.toggle('on',a.dataset.sec===en.target.id))}})},{rootMargin:'-20% 0px -70% 0px'});secs.forEach(s=>io.observe(s))}}
+
+initDoc();initControls();
+ESPN.setPaused(true,true);
+boot(8);   // apre con la 3.01 al tuo team: sei on the clock
+setInterval(()=>{if(UI.visible)ESPN.tick(now());},100);
+setInterval(()=>{if(UI.visible)UI.dirty('hdr')},250);
+const DRAFT_AT=1788984000000;          // draftSettings.date della lega (ESPN)
+const daysToDraft=(DRAFT_AT-Date.now())/864e5;
+const AUTO=(daysToDraft<=21&&daysToDraft>-0.5)?'draft':'season';   // tre settimane prima della draft si apre sul draft
+const h0=location.hash.slice(1);
+if(h0==='draft'||h0==='season')setBlock(h0);
+else if(h0)setView(h0);
+else{curBlock=AUTO;setView(BLOCKS[AUTO].def)}
+})();
+</script>

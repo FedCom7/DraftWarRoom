@@ -1,0 +1,319 @@
+<script>
+(()=>{
+'use strict';
+/* ================= utils ================= */
+const $=(s,r=document)=>r.querySelector(s);
+const now=()=>Date.now();
+const rnd=Math.random;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmtT=t=>{const d=new Date(t);return d.toTimeString().slice(0,8)+'.'+String(d.getMilliseconds()).padStart(3,'0')};
+const fmtHMS=t=>new Date(t).toTimeString().slice(0,8);
+const uuid=()=>(crypto.randomUUID?crypto.randomUUID():'e'+rnd().toString(16).slice(2));
+function gauss(){let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+function erf(x){const s=Math.sign(x);x=Math.abs(x);const t=1/(1+0.3275911*x);return s*(1-(((((1.061405429*t-1.453152027)*t)+1.421413741)*t-0.284496736)*t+0.254829592)*t*Math.exp(-x*x))}
+const Phi=z=>0.5*(1+erf(z/Math.SQRT2));
+
+/* ================= data ================= */
+const SEED=__SEED__;
+const PLAYERS=SEED.map(r=>({id:r[0],name:r[1],pos:r[2],nfl:r[3],rank:r[4],adp:r[5]||0,proj:r[6]||0,bye:r[7]||null,sd:r[8]||null,inj:r[9]||'',
+  age:r[10],exp:r[11],dc:r[12],g25:r[13],ppg25:r[14],tgt:r[15],tsh:r[16],wopr:r[17],car:r[18],snap:r[19],act25:r[20],act26:r[21],ppg26:r[22],
+  tgtpg26:r[23],carpg26:r[24],snap26:r[25],own:r[26]||0,pct:r[27],g26:r[28]}));
+const PBY=new Map(PLAYERS.map(p=>[p.id,p]));
+/* impostazioni reali della lega Topina (leagueId 1948241900, verificate il 20/09/2026) */
+const N=4,ROUNDS=15,TOTAL=N*ROUNDS,CLOCK=120;
+const TEAMS=[
+ {id:1,name:'Oscurus',abbr:'OSC'},{id:2,name:'lasers',abbr:'LAS'},
+ {id:3,name:'Sommo',abbr:'SOM'},{id:4,name:'Capi dei Pianeti',abbr:'CDP'}];
+const MY=3;                        // member FComerio_3 → SWID {701238FB-…} → team 3
+const PICK_ORDER=[3,1,2,4];        // draftSettings.pickOrder
+const REAL_PICKS=[[1,3,4429795],[2,1,4430807],[3,2,4426515],[4,4,4362628],[5,4,3117251],[6,2,4242335],[7,1,4430878],[8,3,4374302],[9,3,4241389],[10,1,4262921],[11,2,4429160],[12,4,3929630],[13,4,4379399],[14,2,4426502],[15,1,4362238],[16,3,4890973],[17,3,4047646],[18,1,4685382],[19,2,3918298],[20,4,4432665],[21,4,4428331],[22,2,3043078],[23,1,4361307],[24,3,4870808],[25,3,4258173],[26,1,4241478],[27,2,4361370],[28,4,4595348],[29,4,4426354],[30,2,4723086],[31,1,4567048],[32,3,4431452],[33,3,4427366],[34,1,4430737],[35,2,4361579],[36,4,4040715],[37,4,4569618],[38,2,16800],[39,1,4429615],[40,3,4685472],[41,3,4239996],[42,1,4612826],[43,2,3953687],[44,4,4696981],[45,4,4567750],[46,2,4685702],[47,1,-16026],[48,3,2473037],[49,3,-16034],[50,1,3915511],[51,2,4239993],[52,4,4372016],[53,4,-16014],[54,2,3916387],[55,1,4259545],[56,3,4431459],[57,3,4426348],[58,1,4362081],[59,2,-16007],[60,4,4574716]];         // le 60 pick vere del 09/09/2026: [overall, teamId, playerId]
+const TBY=new Map(TEAMS.map(t=>[t.id,t]));
+function slotFor(o){const r=Math.ceil(o/N),i=(o-1)%N;const idx=r%2?i:N-1-i;return{overall:o,round:r,pickInRound:i+1,teamId:PICK_ORDER[idx]}}
+const ORDER=Array.from({length:TOTAL},(_,k)=>slotFor(k+1));
+const pickLabel=o=>{const s=ORDER[o-1];return s.round+'.'+String(s.pickInRound).padStart(2,'0')};
+const shortName=n=>{const p=n.split(' ');return p.length>1&&!/D\/ST$/.test(n)?p[0][0]+'. '+p.slice(1).join(' '):n};
+
+/* analytics baseline: replacement level per 10 team */
+const REPL={QB:6,RB:14,WR:14,TE:5,K:4,DST:4}; // 4 team: QB 4+2, RB/WR 8 titolari + FLEX + panchina, TE 4+1
+const BASE={};
+for(const pos of Object.keys(REPL)){const arr=PLAYERS.filter(p=>p.pos===pos).map(p=>p.proj).sort((a,b)=>b-a);BASE[pos]=arr[Math.min(arr.length-1,REPL[pos]-1)]||0}
+PLAYERS.forEach(p=>{p.vorp=Math.round(p.proj-BASE[p.pos])});
+
+/* ================= log + metrics ================= */
+const LOG=[];
+const M={picks:0,dups:0,gaps:0,reorders:0,resyncs:0,errors:0,events:0,polls:0};
+function log(cat,type,text,level){LOG.push({t:now(),cat,type,text,level});if(LOG.length>500)LOG.shift();UI.dirty('log')}
+
+/* ================= ESPN (simulato) ================= */
+const ESPN={status:'IN_PROGRESS',picks:[],replay:false,paused:false,autoPaused:false,pausedAt:0,mode:'ok',delay:3,autoMe:false,clockStart:now(),nextAt:now()+3000,gapOnce:false,etag:1,
+  taken(){return new Set(this.picks.map(p=>p.playerId))},
+  available(){const t=this.taken();return PLAYERS.filter(p=>!t.has(p.id))},
+  rosterOf(team){return this.picks.filter(p=>p.teamId===team).map(p=>PBY.get(p.playerId))},
+  push(teamId,playerId,auto,at){
+    const o=this.picks.length+1,s=ORDER[o-1],t=at||now();
+    this.picks.push({id:o,overallPickNumber:o,roundId:s.round,roundPickNumber:s.pickInRound,teamId,playerId,memberId:'{DEMO-'+teamId+'}',keeper:false,autoDraftTypeId:auto?1:0,bidAmount:0,nominatingTeamId:0,reservedForKeeper:false,lineupSlotId:20,tradeLocked:false,_madeAt:t});
+    this.etag++;this.clockStart=t;this.nextAt=t+this.delay*1000*(0.45+rnd()*0.9);
+    if(o===TOTAL)this.status='COMPLETED';
+    return o},
+  setPaused(v,auto){if(v===this.paused)return;this.paused=v;this.autoPaused=v&&!!auto;
+    if(v){this.pausedAt=now()}else{const d=now()-this.pausedAt;this.clockStart+=d;this.nextAt+=d}},
+  tick(t){
+    if(this.status!=='IN_PROGRESS'||this.paused)return;
+    const o=this.picks.length+1,s=ORDER[o-1];
+    if(s.teamId===MY&&!this.autoMe){
+      if(t-this.clockStart>=CLOCK*1000){const p=this.choose(MY,o);this.push(MY,p.id,true);logEspn(o,true)}
+      return}
+    if(t>=this.nextAt){const p=this.choose(s.teamId,o);this.push(s.teamId,p.id,s.teamId===MY);logEspn(o,s.teamId===MY)}},
+  choose(teamId,o){
+    if(this.replay){const r=REAL_PICKS[o-1];if(r&&r[1]===teamId&&!this.taken().has(r[2]))return PBY.get(r[2])}
+    return botChoice(teamId,o,teamId===MY)},
+  userPick(pid){
+    if(this.status!=='IN_PROGRESS')return;
+    const o=this.picks.length+1;if(ORDER[o-1].teamId!==MY||this.taken().has(pid))return;
+    this.push(MY,pid,false);logEspn(o,false)},
+  undo(){
+    if(!this.picks.length)return;const p=this.picks.pop();this.status='IN_PROGRESS';this.etag++;this.clockStart=now();this.nextAt=now()+this.delay*1000;
+    log('espn','ESPN_COMMISSIONER_UNDO',`[ESPN] il commissioner annulla la pick ${p.overallPickNumber} (${PBY.get(p.playerId).name})`,'espn')},
+  get(){
+    return new Promise((res,rej)=>{
+      const lat=70+rnd()*180;
+      if(this.mode==='timeout'){setTimeout(()=>rej({code:'TIMEOUT',status:0,ms:4000}),4000);return}
+      setTimeout(()=>{
+        if(this.mode==='503')return rej({code:'HTTP_503',status:503,ms:lat});
+        if(this.mode==='429')return rej({code:'HTTP_429',status:429,retryAfter:8,ms:lat});
+        const picks=this.picks.map(({_madeAt,...p})=>({...p}));
+        if(this.gapOnce&&picks.length>=3){picks.splice(picks.length-2,1);this.gapOnce=false}
+        res({status:200,ms:lat,headers:{etag:'W/"'+this.etag+'"'},body:{
+          draftDetail:{drafted:this.status==='COMPLETED',inProgress:this.status==='IN_PROGRESS',picks},
+          settings:{draftSettings:{type:'SNAKE',pickOrder:PICK_ORDER,timePerSelection:CLOCK}}}})
+      },lat)})}
+};
+function logEspn(o,auto){const p=ESPN.picks[o-1];log('espn','ESPN_PICK_MADE',`[ESPN] pick ${o} (${pickLabel(o)}) · ${TBY.get(p.teamId).name} → ${PBY.get(p.playerId).name}${auto?' · autopick':''}`,'espn')}
+
+function botChoice(teamId,o,auto){
+  const round=ORDER[o-1].round,roster=ESPN.rosterOf(teamId),cnt=c=>roster.filter(p=>p.pos===c).length,left=ROUNDS-round+1;
+  const needK=cnt('K')===0,needD=cnt('DST')===0,must=(needK?1:0)+(needD?1:0)>=left;
+  const pool=ESPN.available();
+  const ok=p=>{
+    if(must)return(needK&&p.pos==='K')||(needD&&p.pos==='DST');
+    if((p.pos==='K'||p.pos==='DST')&&(round<12||cnt(p.pos)>=1))return false;
+    if((p.pos==='QB'||p.pos==='TE')&&cnt(p.pos)>=2)return false;
+    if(p.pos==='QB'&&cnt('QB')>=1&&round<9)return false;
+    if(p.pos==='TE'&&cnt('TE')>=1&&round<10)return false;
+    return true};
+  const cand=pool.filter(ok),list=cand.length?cand:pool;
+  const key=p=>{const base=p.adp>0?p.adp:p.rank+20;return auto?p.rank:base+gauss()*Math.max(1.2,p.sd||base*0.12)};
+  return list.map(p=>({p,k:key(p)})).sort((a,b)=>a.k-b.k)[0].p}
+
+/* ================= Adapter: ESPN → dominio ================= */
+function normalize(body){
+  const dd=body.draftDetail;
+  const status=dd.drafted&&!dd.inProgress?'COMPLETED':dd.inProgress?'IN_PROGRESS':'SCHEDULED';
+  const picks=dd.picks.filter(p=>p.playerId&&p.playerId!==-1)
+    .map(p=>({overall:p.overallPickNumber,round:p.roundId,pickInRound:p.roundPickNumber,teamId:p.teamId,playerId:p.playerId,auto:p.autoDraftTypeId>0}))
+    .sort((a,b)=>a.overall-b.overall);
+  return{status,picks,secondsPerPick:body.settings.draftSettings.timePerSelection}}
+function findGaps(picks){const g=[];let e=1;for(const p of picks){while(e<p.overall){g.push(e);e++}e=p.overall+1}return g}
+
+/* ================= Server: DB + Sync Engine + outbox/stream ================= */
+const DB={picks:new Map(),seq:0,ver:0,status:'SCHEDULED',current:null,clock:null};
+const STREAM=[],STREAM_MAX=400;
+const SYNC={running:true,timer:null,lastSuccessAt:0,lastAttemptAt:0,failures:0,interval:2000,fp:'',lastChangeAt:now(),health:'LIVE',circuit:'CLOSED',removal:null,gapRetries:0,gapMissing:[],lastDur:0,stopped:false};
+
+function viewPick(p){const pl=PBY.get(p.playerId),tm=TBY.get(p.teamId);
+  return{overall:p.overall,round:p.round,pickInRound:p.pickInRound,teamId:p.teamId,teamName:tm.name,playerId:p.playerId,playerName:pl.name,position:pl.pos,nflTeam:pl.nfl,isAutoPick:p.auto,revision:p.revision||1,detectedAt:p.detectedAt,source:p.source}}
+function publish(type,payload,eph){
+  const env={id:uuid(),type,draftId:'drf_demo_2026',seq:eph?null:++DB.seq,stateVersion:DB.ver,emittedAt:now(),ephemeral:!!eph,payload};
+  if(!eph){STREAM.push(env);if(STREAM.length>STREAM_MAX)STREAM.shift();M.events++;log('dom',type,`seq ${env.seq} · ${describe(env)}`,'dom')}
+  else if(type!=='SYNC_HEARTBEAT')log('sync',type,describe(env),type==='SYNC_CONNECTED'?'ok':type==='SYNC_ERROR'?'err':'warn');
+  else log('hb',type,`lastSync ${fmtT(payload.lastSuccessfulSyncAt)} · ESPN ${payload.providerLatencyMs}ms · next ${payload.pollIntervalMs}ms`,'hb');
+  Net.deliver(env)}
+function describe(e){const p=e.payload;switch(e.type){
+  case'DRAFT_PICK_CREATED':return`pick ${p.pick.overall} ${TBY.get(p.pick.teamId).abbr} → ${p.pick.playerName} ${p.pick.position}`;
+  case'DRAFT_PICK_UPDATED':return`pick ${p.pick.overall} corretta → ${p.pick.playerName} (rev ${p.revision})`;
+  case'DRAFT_PICK_REMOVED':return`pick ${p.overallPick} rimossa (undo)`;
+  case'PLAYER_DRAFTED':return`player ${PBY.get(p.playerId).name} non più disponibile`;
+  case'TEAM_UPDATED':return`${TBY.get(p.teamId).abbr} roster ${p.rosterCount}/15`;
+  case'DRAFT_STATE_UPDATED':return p.current?`on the clock: pick ${p.current.overall} ${TBY.get(p.current.teamId).abbr} · v${e.stateVersion}`:`status ${p.status}`;
+  case'DRAFT_STARTED':return'draft iniziata';
+  case'DRAFT_COMPLETED':return`draft completata · ${p.totalPicks} pick`;
+  case'SYNC_CONNECTED':return`ESPN di nuovo raggiungibile dopo ${p.afterFailures} errori`;
+  case'SYNC_DEGRADED':return`${p.reason} · ${p.consecutiveFailures} errori consecutivi`;
+  case'SYNC_ERROR':return`${p.code} · circuit OPEN · retry tra ${(p.retryInMs/1000).toFixed(1)}s`;
+  default:return''}}
+
+function schedule(ms){clearTimeout(SYNC.timer);SYNC.nextAt=now()+ms;SYNC.timer=setTimeout(poll,ms)}
+async function poll(){
+  if(!SYNC.running)return;
+  SYNC.lastAttemptAt=now();M.polls++;
+  let r;
+  try{r=await ESPN.get()}catch(e){return onFail(e)}
+  if(!SYNC.running)return;
+  SYNC.lastDur=Math.round(r.ms);
+  const snap=normalize(r.body);
+  const gaps=findGaps(snap.picks);
+  if(gaps.length){
+    SYNC.gapRetries++;SYNC.gapMissing=gaps;M.gaps++;
+    log('sync','GAP_DETECTED',`snapshot incoerente: manca la pick ${gaps.join(', ')} (ricevute fino alla ${snap.picks[snap.picks.length-1].overall}) → nessun commit, re-fetch immediato #${SYNC.gapRetries}`,'warn');
+    if(SYNC.gapRetries<=3)return schedule(180);
+    snap.picks=snap.picks.filter(p=>p.overall<gaps[0]);
+    log('sync','GAP_PERSISTENT',`commit del solo prefisso coerente 1..${gaps[0]-1}`,'err')}
+  let resync=false;
+  if(SYNC.gapRetries>0&&!gaps.length){log('sync','GAP_RECOVERED',`pick ${SYNC.gapMissing.join(', ')} recuperata con resync (${SYNC.gapRetries} tentativo/i): committo in ordine`,'ok');SYNC.gapRetries=0;resync=true}
+  markSuccess();
+  const fp=snap.status+'|'+snap.picks.map(p=>p.overall+':'+p.playerId).join(',');
+  let changed=false;
+  if(fp!==SYNC.fp){
+    const res=commit(snap,fp,resync);
+    if(res==='pending'){return schedule(400)}
+    changed=res}
+  let iv;
+  if(DB.status==='SCHEDULED')iv=5000;
+  else if(changed)iv=1000;
+  else if(now()-SYNC.lastChangeAt>30000)iv=3000;
+  else iv=2000;
+  SYNC.interval=iv;
+  publish('SYNC_HEARTBEAT',{lastSuccessfulSyncAt:SYNC.lastSuccessAt,providerLatencyMs:SYNC.lastDur,pollIntervalMs:iv,health:SYNC.health},true);
+  if(DB.status==='COMPLETED'){if(!SYNC.stopped){SYNC.stopped=true;log('sync','SYNC_STOPPED','draft completata: polling fermato (in prod: riconciliazione finale a +60s)','ok')}return}
+  schedule(iv)}
+function markSuccess(){
+  if(SYNC.failures>0){const f=SYNC.failures;SYNC.failures=0;SYNC.health='LIVE';SYNC.circuit='CLOSED';publish('SYNC_CONNECTED',{recovered:true,afterFailures:f},true)}
+  SYNC.health='LIVE';SYNC.lastSuccessAt=now()}
+function onFail(e){
+  if(!SYNC.running)return;
+  SYNC.failures++;M.errors++;
+  const wait=e.status===429?e.retryAfter*1000:Math.min(30000,1000*2**(SYNC.failures-1))*(0.8+rnd()*0.4);
+  log('sync','SYNC_FAIL',`${e.code}${e.status?' ('+e.status+')':''} · tentativo ${SYNC.failures} · ${e.status===429?'Retry-After':'backoff'} ${(wait/1000).toFixed(1)}s`,'err');
+  if(SYNC.failures===2){SYNC.health='DEGRADED';publish('SYNC_DEGRADED',{reason:e.code,consecutiveFailures:SYNC.failures,lastSuccessfulSyncAt:SYNC.lastSuccessAt},true)}
+  if(SYNC.failures===5){SYNC.circuit='OPEN';SYNC.health='ERROR';publish('SYNC_ERROR',{code:e.status===429?'RATE_LIMITED':'PROVIDER_DOWN',retryInMs:Math.round(wait)},true)}
+  schedule(wait)}
+function rosterCount(teamId){let c=0;DB.picks.forEach(p=>{if(p.teamId===teamId)c++});return c}
+function commit(snap,fp,resync){
+  const t=now();
+  const maxSnap=snap.picks.length?snap.picks[snap.picks.length-1].overall:0;
+  const removed=[...DB.picks.keys()].filter(o=>o>maxSnap).sort((a,b)=>b-a);
+  if(removed.length&&SYNC.removal!==fp){SYNC.removal=fp;log('sync','REMOVAL_PENDING',`ESPN non riporta più la pick ${removed.join(', ')}: attendo conferma da un secondo snapshot (anti-flap)`,'warn');return'pending'}
+  SYNC.removal=null;DB.ver++;
+  const prevCount=DB.picks.size;
+  if(DB.status==='SCHEDULED'&&snap.status!=='SCHEDULED')publish('DRAFT_STARTED',{startedAt:new Date(t).toISOString(),totalPicks:TOTAL});
+  for(const o of removed){const old=DB.picks.get(o);DB.picks.delete(o);
+    publish('DRAFT_PICK_REMOVED',{overallPick:o,playerId:old.playerId,teamId:old.teamId,reason:'PROVIDER_UNDO'});
+    publish('TEAM_UPDATED',{teamId:old.teamId,rosterCount:rosterCount(old.teamId)})}
+  for(const p of snap.picks){
+    const prev=DB.picks.get(p.overall);
+    if(!prev){
+      const pick={...p,detectedAt:t,source:resync?'PROVIDER_RESYNC':'PROVIDER_POLL',revision:1};DB.picks.set(p.overall,pick);M.picks++;
+      const made=ESPN.picks[p.overall-1];
+      publish('DRAFT_PICK_CREATED',{pick:viewPick(pick),debug:{providerMadeAt:made?made._madeAt:null}});
+      publish('PLAYER_DRAFTED',{playerId:p.playerId,teamId:p.teamId,overallPick:p.overall});
+      publish('TEAM_UPDATED',{teamId:p.teamId,rosterCount:rosterCount(p.teamId)})}
+    else if(prev.playerId!==p.playerId){
+      const pick={...prev,playerId:p.playerId,revision:prev.revision+1};DB.picks.set(p.overall,pick);
+      publish('DRAFT_PICK_UPDATED',{pick:viewPick(pick),previousPlayerId:prev.playerId,revision:pick.revision})}}
+  DB.status=snap.status;
+  const cur=DB.status==='COMPLETED'?null:ORDER[DB.picks.size];
+  if(DB.picks.size!==prevCount||!DB.clock)DB.clock=cur?{startedAt:t,expiresAt:t+CLOCK*1000,source:'ESTIMATED'}:null;
+  DB.current=cur;
+  publish('DRAFT_STATE_UPDATED',{status:DB.status,current:cur,clock:DB.clock,picksMade:DB.picks.size});
+  if(DB.status==='COMPLETED')publish('DRAFT_COMPLETED',{totalPicks:DB.picks.size,completedAt:new Date(t).toISOString()});
+  SYNC.fp=fp;SYNC.lastChangeAt=t;return true}
+function serverSnapshot(){return{picks:new Map([...DB.picks].map(([k,v])=>[k,viewPick(v)])),seq:DB.seq,ver:DB.ver,status:DB.status,current:DB.current,clock:DB.clock,lastSuccessAt:SYNC.lastSuccessAt,health:SYNC.health,interval:SYNC.interval}}
+function serverRestart(){
+  if(!Net.serverUp)return;
+  log('client','BACKEND_RESTART','sync worker + gateway riavviati: stream SSE chiusi, stato in memoria perso (Postgres e Redis Stream restano)','warn');
+  SYNC.running=false;clearTimeout(SYNC.timer);Net.serverUp=false;Net.dropClient('backend restart');
+  SYNC.fp='';SYNC.failures=0;SYNC.gapRetries=0;
+  setTimeout(()=>{SYNC.running=true;SYNC.stopped=false;Net.serverUp=true;
+    log('sync','WORKER_BOOT',`worker avviato: lease Redis acquisito, stato da Postgres (${DB.picks.size} pick, seq ${DB.seq}) → primo poll di riconciliazione`,'ok');poll()},3500)}
+
+/* ================= Transport: SSE gateway (simulato) ================= */
+const Net={online:true,serverUp:true,connected:false,dupNext:false,reorderNext:false,held:null,heldTimer:null,
+  send(env,lat){setTimeout(()=>{if(this.connected)Client.onEvent(env)},lat)},
+  deliver(env){
+    if(!this.connected)return;
+    const lat=15+rnd()*45;
+    if(!env.ephemeral&&this.reorderNext){this.reorderNext=false;this.held=env;this.heldTimer=setTimeout(()=>this.flushHeld(),2500);log('client','REORDER_INJECTED',`seq ${env.seq} trattenuto dal “network”: arriverà dopo il successivo`,'warn');return}
+    this.send(env,lat);
+    if(!env.ephemeral&&this.held){const h=this.held;this.held=null;clearTimeout(this.heldTimer);this.send(h,lat+35)}
+    if(!env.ephemeral&&this.dupNext){this.dupNext=false;this.send(env,lat+12);log('client','DUPLICATE_INJECTED',`seq ${env.seq} consegnato due volte (at-least-once)`,'warn')}},
+  flushHeld(){if(this.held){const h=this.held;this.held=null;if(this.connected)Client.onEvent(h)}},
+  dropClient(reason){if(!this.connected)return;this.connected=false;Client.onDisconnect(reason)}};
+
+/* ================= Client (browser store + reducer) ================= */
+const Client={picks:new Map(),lastSeq:0,buffer:new Map(),gapTimer:null,status:'SCHEDULED',current:null,clock:null,lastSyncAt:0,serverHealth:'LIVE',pollIv:2000,providerLat:0,
+  connected:false,attempt:0,retryAt:0,rt:null,frozen:false,flash:new Set(),leaving:new Set(),lastPickInfo:null,applied:new Map(),
+  loadSnapshot(reason){
+    const s=serverSnapshot();this.picks=s.picks;this.lastSeq=s.seq;this.status=s.status;this.current=s.current;this.clock=s.clock;
+    this.lastSyncAt=s.lastSuccessAt;this.serverHealth=s.health==='LIVE'?'LIVE':s.health;this.pollIv=s.interval;this.buffer.clear();
+    if(reason)log('client','SNAPSHOT_LOADED',`${reason}: GET /api/drafts/:id/state → ${s.picks.size} pick, seq ${s.seq}, v${s.ver}`,'info');
+    UI.dirty('all')},
+  connect(){
+    clearTimeout(this.rt);
+    if(this.connected)return;
+    this.attempt++;
+    if(!Net.online||!Net.serverUp){
+      const w=Math.min(10000,1000*2**(this.attempt-1));this.retryAt=now()+w;
+      log('client','RECONNECT_FAILED',`tentativo ${this.attempt} (${!Net.online?'rete assente':'gateway non raggiungibile'}) · riprovo tra ${Math.round(w/1000)}s`,'err');
+      this.rt=setTimeout(()=>this.connect(),w);UI.dirty('hdr');return}
+    Net.connected=true;this.connected=true;this.attempt=0;this.retryAt=0;
+    log('client','SSE_OPEN','EventSource aperto con ticket firmato · Last-Event-ID: '+this.lastSeq,'ok');
+    this.resync('reconnect')},
+  onDisconnect(reason){
+    this.connected=false;clearTimeout(this.gapTimer);this.gapTimer=null;
+    log('client','SSE_CLOSED',`connessione persa (${reason}) → OFFLINE, riconnessione automatica`,'err');
+    this.attempt=0;this.rt=setTimeout(()=>this.connect(),1000);this.retryAt=now()+1000;UI.dirty('hdr')},
+  resync(reason){
+    M.resyncs++;this.buffer.clear();clearTimeout(this.gapTimer);this.gapTimer=null;
+    const from=this.lastSeq,first=STREAM.length?STREAM[0].seq:DB.seq+1;
+    if(from>=first-1){
+      const missed=STREAM.filter(e=>e.seq>from);
+      log('client','RESYNC',`${reason}: replay di ${missed.length} eventi dallo stream (seq ${from+1}→${DB.seq})`,'ok');
+      missed.forEach(e=>this.onEvent(e));
+      const s=serverSnapshot();this.lastSyncAt=s.lastSuccessAt;this.serverHealth=s.health;this.pollIv=s.interval}
+    else this.loadSnapshot(reason+' (fuori retention)');
+    UI.dirty('all')},
+  onEvent(env){
+    if(this.frozen)return;
+    if(env.ephemeral){this.onSync(env);return}
+    if(env.seq<=this.lastSeq||this.buffer.has(env.seq)){M.dups++;log('client','DUPLICATE_DROPPED',`seq ${env.seq} (${env.type}) già applicato → scartato`,'warn');return}
+    if(env.seq>this.lastSeq+1){
+      this.buffer.set(env.seq,env);M.reorders++;
+      log('client','OUT_OF_ORDER',`ricevuto seq ${env.seq}, atteso ${this.lastSeq+1} → in buffer`,'warn');
+      if(!this.gapTimer)this.gapTimer=setTimeout(()=>{this.gapTimer=null;if(this.buffer.size){log('client','GAP_TIMEOUT','evento mancante non arrivato entro 1.5s → resync','err');this.resync('gap')}},1500);
+      return}
+    this.apply(env);this.lastSeq=env.seq;
+    while(this.buffer.has(this.lastSeq+1)){const e=this.buffer.get(this.lastSeq+1);this.buffer.delete(e.seq);this.apply(e);this.lastSeq=e.seq;log('client','BUFFER_DRAINED',`seq ${e.seq} applicato dopo il riordino`,'ok')}
+    if(!this.buffer.size&&this.gapTimer){clearTimeout(this.gapTimer);this.gapTimer=null}},
+  onSync(env){
+    const p=env.payload;
+    if(env.type==='SYNC_HEARTBEAT'){this.lastSyncAt=p.lastSuccessfulSyncAt;this.serverHealth='LIVE';this.pollIv=p.pollIntervalMs;this.providerLat=p.providerLatencyMs}
+    else if(env.type==='SYNC_DEGRADED')this.serverHealth='DEGRADED';
+    else if(env.type==='SYNC_ERROR')this.serverHealth='ERROR';
+    else if(env.type==='SYNC_CONNECTED')this.serverHealth='LIVE';
+    UI.dirty('hdr')},
+  apply(env){
+    const p=env.payload;
+    switch(env.type){
+      case'DRAFT_STARTED':this.status='IN_PROGRESS';break;
+      case'DRAFT_PICK_CREATED':case'DRAFT_PICK_UPDATED':{
+        const pk=p.pick;
+        if(env.type==='DRAFT_PICK_UPDATED'){const old=this.picks.get(pk.overall);if(old)this.leaving.delete(old.playerId)}
+        this.picks.set(pk.overall,pk);this.flash.add(pk.overall);
+        const at=now();this.applied.set(pk.overall,{at,emitted:env.emittedAt,made:p.debug?p.debug.providerMadeAt:null});
+        this.lastPickInfo={overall:pk.overall,at};
+        if(env.type==='DRAFT_PICK_CREATED')log('client','UI_UPDATED',`pick ${pk.overall} visibile · consegna ${at-env.emittedAt}ms dopo la pubblicazione`,'ok');
+        break}
+      case'DRAFT_PICK_REMOVED':this.picks.delete(p.overallPick);break;
+      case'PLAYER_DRAFTED':this.leaving.add(p.playerId);setTimeout(()=>{this.leaving.delete(p.playerId);UI.dirty('players')},750);break;
+      case'TEAM_UPDATED':break;
+      case'DRAFT_STATE_UPDATED':this.status=p.status;this.current=p.current;this.clock=p.clock;break;
+      case'DRAFT_COMPLETED':this.status='COMPLETED';this.current=null;this.clock=null;break}
+    this.check();UI.dirty('all')},
+  check(){
+    let max=0;this.picks.forEach((_,k)=>{if(k>max)max=k});
+    const seen=new Set();let ok=true;
+    for(let i=1;i<=max;i++){const p=this.picks.get(i);if(!p){ok=false;break}if(seen.has(p.playerId)){ok=false;break}seen.add(p.playerId)}
+    if(!ok){log('client','INVARIANT_VIOLATION','sequenza di pick impossibile nello stato locale → scarto e ricarico lo snapshot','err');this.loadSnapshot('invariant')}},
+  draftedMap(){const m=new Map();this.picks.forEach(p=>m.set(p.playerId,p));return m}
+};
+</script>

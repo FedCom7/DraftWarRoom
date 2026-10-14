@@ -1,0 +1,165 @@
+<div id="view-review" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Analisi squadre</h2><p>Dove ogni squadra ha fatto la differenza rispetto alla tua: punti, reparti, fortuna, scelte, mercato e quello che resta della stagione. Contano solo le giornate concluse.</p></div>
+  <div class="an-bar">
+    <span style="font-size:12px;color:var(--k-muted)">Confronta la tua squadra con</span>
+    <div class="chips" id="rv-opp"></div>
+    <span class="rv-key"><i style="background:var(--rv-me)"></i>tu <i style="background:var(--rv-op)"></i><b id="rv-opp-name">—</b> <i style="background:var(--rv-ot)"></i>le altre</span>
+    <span class="sp" id="rv-info"></span>
+  </div>
+  <div class="rv-tabs" role="tablist" id="rv-tabs">
+    <button role="tab" data-rvtab="over" aria-selected="true">Panoramica</button>
+    <button role="tab" data-rvtab="units" aria-selected="false">Reparti</button>
+    <button role="tab" data-rvtab="moves" aria-selected="false">Scelte e mercato</button>
+    <button role="tab" data-rvtab="rest" aria-selected="false">Resto della stagione</button>
+  </div>
+
+  <section data-rvpane="over">
+    <div class="strip" id="rv-kpi"></div>
+    <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:10px">
+      <div class="chartcard">
+        <h3>Fortuna o bravura</h3>
+        <p class="cn">Il record "tutti contro tutti" conta ogni giornata come se avessi giocato contro tutte e tre le altre squadre: misura la forza vera. La differenza con il record reale è quanto ha pesato il calendario. Punti subiti: quanto hanno segnato in media gli avversari che ti sono capitati.</p>
+        <div style="overflow-x:auto"><table class="antable rv-mx" id="rv-luck"></table></div>
+        <div class="chartwrap" id="rv-luckchart" style="margin-top:10px"></div>
+      </div>
+      <div class="chartcard">
+        <h3>Giornata per giornata</h3>
+        <p class="cn">Punti totali dei titolari. La linea tratteggiata è la media della lega in quella giornata.</p>
+        <div class="chartwrap" id="rv-line"></div>
+      </div>
+    </div>
+    <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+      <div class="chartcard">
+        <h3>Forma: ultime tre giornate</h3>
+        <p class="cn">Media delle ultime tre giornate contro la media della stagione, per il totale e per ogni posto. Una freccia in su vuol dire che il posto sta rendendo più del solito.</p>
+        <div style="overflow-x:auto"><table class="antable rv-mx" id="rv-form"></table></div>
+      </div>
+      <div class="chartcard">
+        <h3>Dove sei debole</h3>
+        <p class="cn">Lettura da analista dei numeri di tutte le schede.</p>
+        <div id="rv-verdict" class="rv-verdict"></div>
+      </div>
+    </div>
+  </section>
+
+  <section data-rvpane="units" hidden>
+    <div class="chartcard" style="margin-bottom:10px">
+      <h3>Rosa completa, ruolo per ruolo</h3>
+      <p class="cn">Tutti i giocatori in rosa, titolari e panchina insieme, raggruppati per ruolo. Dice quanto vale il reparto nel suo insieme, ma mescola le scelte di formazione: chi tiene tre QB ne ha tre pallini a giornata. Le due viste sotto separano titolari e panchina.</p>
+      <div class="chartwrap" id="rv-fstrip"></div>
+    </div>
+    <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:10px">
+      <div class="chartcard">
+        <h3>Titolari, posto per posto</h3>
+        <p class="cn">Raggruppati per posto in formazione: ogni squadra ha gli stessi posti (1 QB, 2 RB, 2 WR, 1 TE, 1 FLEX RB/WR, K, D/ST), quindi il confronto è alla pari.</p>
+        <div class="chartwrap" id="rv-strip"></div>
+      </div>
+      <div class="chartcard">
+        <h3>Panchina, ruolo per ruolo</h3>
+        <p class="cn">Punti che non contano nel risultato, ma dicono quanto è profonda la rosa (bye, infortuni, scambi) e quanto si sbaglia la formazione.</p>
+        <div class="chartwrap" id="rv-bstrip"></div>
+      </div>
+    </div>
+    <p class="cn rv-how">Come leggere le strisce: ogni pallino è un giocatore in una giornata, la fascia va dal 25° al 75° percentile, la tacca è la media <b>per giocatore</b>. Il numero grande a destra è la differenza fra le due tacche; sotto c'è la differenza <b>per giornata</b>, che somma tutti i giocatori di quella riga e cambia se una squadra ne schiera o ne tiene di più.</p>
+    <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:10px">
+      <div class="chartcard">
+        <h3>Dove fa la differenza</h3>
+        <p class="cn">Punti a giornata dei titolari in ogni posto: verso destra sei avanti tu, verso sinistra l'altra squadra. La costanza è lo scarto tipico fra una giornata e l'altra, in percentuale della media: più è basso, più il posto è affidabile.</p>
+        <div class="chartwrap" id="rv-div"></div>
+      </div>
+      <div class="chartcard">
+        <h3>Le quattro squadre a confronto</h3>
+        <p class="cn">Punti a giornata dei titolari per posto, con la posizione nella lega (1° = il migliore). Costanza: quanto oscilla il totale (più basso è meglio). Efficienza: quota dei punti della formazione ideale effettivamente messi in campo.</p>
+        <div style="overflow-x:auto"><table class="antable rv-mx" id="rv-matrix"></table></div>
+      </div>
+    </div>
+    <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+      <div class="chartcard">
+        <h3>Dipendenza dalle stelle</h3>
+        <p class="cn">Quota dei punti da titolare portata dal miglior giocatore e dai migliori tre. Più è alta, più un infortunio pesa: è il primo dato da guardare prima di uno scambio.</p>
+        <div class="chartwrap" id="rv-stars"></div>
+      </div>
+      <div class="chartcard">
+        <h3>Volume o touchdown</h3>
+        <p class="cn">Quota dei punti da titolare arrivata dai touchdown (QB, RB, WR, TE). I touchdown oscillano molto, il volume (ricezioni, yard) si ripete: una squadra che vive di touchdown tende a calare, una con tanto volume e pochi touchdown tende a salire.</p>
+        <div class="chartwrap" id="rv-td"></div>
+      </div>
+    </div>
+  </section>
+
+  <section data-rvpane="moves" hidden>
+    <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:10px">
+      <div class="chartcard">
+        <h3>Proiezioni contro realtà</h3>
+        <p class="cn"><b>Rispetto alle proiezioni</b>: quanto i titolari hanno fatto in più o in meno di quanto ESPN prevedeva, a giornata (sorte e rendimento dei giocatori). <b>Scelte di formazione</b>: punti dei titolari scelti dal manager contro quelli della formazione che le proiezioni ESPN avrebbero schierato. Molte scelte sono quasi alla pari, quindi conta anche la fortuna: va letto sul lungo periodo.</p>
+        <div style="overflow-x:auto"><table class="antable rv-mx" id="rv-choices"></table></div>
+      </div>
+      <div class="chartcard">
+        <h3>Mercato</h3>
+        <p class="cn">Punti da titolare portati da chi è arrivato dal waiver o dagli svincolati, contro i punti fatti dopo il taglio (in qualunque squadra, o da libero) da chi è stato mandato via.</p>
+        <div class="chartwrap" id="rv-market"></div>
+        <div id="rv-marketlist" style="margin-top:10px"></div>
+      </div>
+    </div>
+    <div class="an-grid" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)">
+      <div class="chartcard">
+        <h3>Draft: valore per pick</h3>
+        <p class="cn">Ogni pallino è una scelta del draft 2026: posizione della pick e punti da titolare che quel giocatore ha portato alla squadra che l'ha scelto. La curva tratteggiata è il rendimento tipico per quella posizione di pick: sopra la curva è un affare, sotto una scelta che non ha reso.</p>
+        <div class="chartwrap" id="rv-draft"></div>
+      </div>
+      <div class="chartcard">
+        <h3>Chi ha vinto il draft</h3>
+        <p class="cn">Somma, scelta per scelta, dei punti sopra o sotto la curva. Dice chi ha pescato meglio dato l'ordine delle pick.</p>
+        <div class="chartwrap" id="rv-draftteam"></div>
+        <div id="rv-draftlist" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </section>
+
+  <section data-rvpane="rest" hidden>
+    <div class="chartcard" style="margin-bottom:10px">
+      <h3>Seed e titolo</h3>
+      <p class="cn" id="rv-simnote"></p>
+      <div class="chartwrap" id="rv-sim"></div>
+    </div>
+    <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+      <div class="chartcard">
+        <h3>Calendario che resta</h3>
+        <p class="cn">Quanto sono morbide le difese che affronteranno i titolari di oggi (QB, RB, WR, TE): 1.00 è la media, sopra 1 concedono più punti del normale. Diviso fra prossime tre giornate, resto della stagione regolare e settimane dei playoff.</p>
+        <div style="overflow-x:auto"><table class="antable rv-mx" id="rv-sos"></table></div>
+      </div>
+      <div class="chartcard">
+        <h3>Bye da coprire</h3>
+        <p class="cn">Titolari di oggi che saltano una giornata della stagione regolare: le settimane con due o più assenze sono quelle da preparare con la panchina o il waiver.</p>
+        <div style="overflow-x:auto"><table class="antable rv-mx" id="rv-byes"></table></div>
+      </div>
+    </div>
+  </section>
+</div>
+</div>
+
+<div id="view-memo" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Giocatori da ricordare</h2><p>Chi ha fatto la differenza nella lega quest'anno, titolari e panchina di tutte le squadre, più chi nessuno ha preso. La lista si salva a fine stagione e la ritrovi nella draft room dell'anno prossimo, insieme alle tue stelle e alle tue note.</p></div>
+  <div class="an-bar">
+    <div class="chips" id="mm-tag"></div>
+  </div>
+  <div class="an-bar">
+    <div class="chips" id="mm-pos"></div>
+    <label>Squadra <select id="mm-team"></select></label>
+    <label>Cerca <input id="mm-q" type="search" placeholder="nome" style="width:140px"></label>
+    <span class="sp" id="mm-info"></span>
+  </div>
+  <div class="chartcard">
+    <div style="overflow:auto;max-height:70vh"><table class="antable mm-t" id="mm-table"></table></div>
+    <details class="mm-legend"><summary>Cosa vogliono dire le etichette</summary>
+      <dl id="mm-defs"></dl></details>
+  </div>
+  <div class="chartcard" id="mm-hist-card" style="margin-top:10px" hidden>
+    <h3>Dalle stagioni passate</h3>
+    <p class="cn">I giocatori segnati nelle stagioni archiviate: sono gli stessi che la draft room evidenzia.</p>
+    <div style="overflow:auto;max-height:50vh"><table class="antable" id="mm-hist"></table></div>
+  </div>
+</div>
+</div>

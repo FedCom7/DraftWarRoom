@@ -1,0 +1,125 @@
+<div id="view-rivals" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Avversari · otto stagioni di abitudini</h2><p>In una lega da 4 non serve un modello di mercato: bastano tre persone. Qui ci sono i titolari schierati da ognuno dal 2019 al 2026 (copia dell'archivio storico della lega, 610 schieramenti per stagione) e la sequenza reale delle loro pick nella draft 2026 su ESPN.</p></div>
+  <div class="an-grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))" id="rv-cards"></div>
+  <div class="an-grid" style="margin-top:10px">
+    <div class="chartcard">
+      <h3>Da dove arrivano i loro punti</h3>
+      <p class="cn">Scostamento dalla media della lega nella quota di punti per reparto (2019-2025): dove ognuno guadagna e dove rinuncia rispetto agli altri tre.</p>
+      <div class="chartwrap" id="ch-share"></div>
+      <div class="legend2" id="ch-share-lg"></div>
+    </div>
+    <div class="chartcard">
+      <h3>Mock draft contro di loro</h3>
+      <p class="cn">Gli avversari non scelgono con l'ADP: scelgono come hanno sempre scelto. Il modello parte dall'ordine di mercato e lo piega con le loro sette draft vere e con il Manager DNA — quanto anticipano, quanto sono imprevedibili, in che giro prendono il primo QB, quali ruoli preferiscono giro per giro, quanto spesso ridraftano i propri giocatori e se cercano rookie o veterani.</p>
+      <div id="mk-model"></div>
+      <div class="an-bar" style="margin:0 0 10px">
+        <label>Strategia <select id="mk-strat">
+          <option value="vorp">Miglior VORP disponibile</option>
+          <option value="zero">Zero-RB (niente RB nei primi 2 turni)</option>
+          <option value="hero">Hero-RB (RB alla 1.01, poi ricevitori)</option>
+          <option value="lateqb">QB tardi (non prima del round 6)</option>
+          <option value="balanced">Bilanciata (rispetta gli slot)</option>
+        </select></label>
+        <label>Simulazioni <select id="mk-n"><option>100</option><option selected>300</option><option>800</option></select></label>
+        <button id="mk-run">Simula</button>
+        <button id="mk-all">Confronta le strategie</button><button id="mk-first">Quale prima scelta?</button>
+      </div>
+      <div id="mk-out"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="view-schedule" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Calendario, bye e difficoltà</h2><p>Bye week e avversari arrivano dal calendario ESPN 2026; la durezza di una difesa è la media dei punti PPR che ha concesso a quel reparto nel 2025 (nflverse), rapportata alla media della lega. 1.00 è una difesa nella media: sopra concede di più, sotto è dura.</p></div>
+  <div class="an-bar">
+    <label>Reparto <select id="sd-pos"><option>RB</option><option selected>WR</option><option>QB</option><option>TE</option></select></label>
+    <label>Finestra <select id="sd-win"><option value="all">Stagione intera (1-17)</option><option value="po" selected>Playoff di lega (15-17)</option><option value="early">Inizio stagione (1-6)</option></select></label>
+    <span class="sp">Il tuo campionato assegna i playoff nelle settimane 15-17</span>
+  </div>
+  <div class="an-grid">
+    <div class="chartcard">
+      <h3>Difficoltà del calendario per squadra NFL</h3>
+      <p class="cn">Media della durezza degli avversari nella finestra scelta. Verde: calendario morbido per quel reparto.</p>
+      <div style="overflow:auto;max-height:560px"><table class="antable" id="sd-table"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Mappa dei bye</h3>
+      <p class="cn">Quante squadre NFL riposano in ogni settimana, e i giocatori più forti coinvolti. Con 9 titolari e 6 panchinari, due bye sovrapposti nello stesso reparto sono un problema reale.</p>
+      <div id="sd-bye"></div>
+      <h3 style="margin-top:14px">I migliori giocatori con il calendario playoff più facile</h3>
+      <div style="overflow:auto;max-height:300px"><table class="antable" id="sd-players"></table></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="view-waiver" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Waiver radar · situazione attuale della lega</h2><p>I giocatori nei roster delle quattro squadre si aggiornano ogni 30 secondi, il resto della lega è libero (il conteggio è in alto a destra). In una lega così piccola i waiver valgono più della draft, e il segnale migliore non sono i punti fatti ma il volume: target e corse per gara nel 2026, snap, e il confronto con il 2025.</p></div>
+  <div class="an-bar">
+    <div class="chips" id="wv-pos"></div>
+    <label>Ordina per <select id="wv-sort">
+      <option value="opp">Punteggio di opportunità</option><option value="trend">Volume in crescita</option>
+      <option value="proj">Proiezione stagionale</option><option value="ppg26">Punti a gara 2026</option></select></label>
+    <label><input type="checkbox" id="wv-fa" checked> Solo liberi nella lega</label>
+    <span class="sp" id="wv-info"></span>
+  </div>
+  <div class="an-grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
+    <div class="chartcard">
+      <h3>Giocatori disponibili ora</h3>
+      <p class="cn">Il punteggio di opportunità pesa volume 2026 per gara, snap, crescita rispetto al 2025 e proiezione residua.</p>
+      <div style="overflow:auto;max-height:620px"><table class="antable" id="wv-table"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Chi ha cosa, adesso</h3>
+      <p class="cn">I roster delle quattro squadre come li riporta ESPN in questo momento.</p>
+      <div id="wv-rosters"></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div id="view-compare" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Confronto diretto</h2><p>Due giocatori affiancati, ma sempre dentro al loro reparto: ogni barra mostra il minimo, la media e il massimo tipici del ruolo, così un numero non resta un numero. Il floor e il ceiling sono i percentili 10 e 90 fra i titolari della posizione, calcolati sulle partite vere.</p></div>
+  <div class="an-bar">
+    <label>A <input list="cmp-list" id="cmp-a" placeholder="Giocatore A" autocomplete="off"></label>
+    <button id="cmp-swap" title="Scambia A e B">⇄</button>
+    <label>B <input list="cmp-list" id="cmp-b" placeholder="Giocatore B" autocomplete="off"></label>
+    <datalist id="cmp-list"></datalist>
+    <span class="sp">Suggerimento: confronta chi ti stanno per soffiare con l'alternativa che pensi resti libera</span>
+  </div>
+  <div class="strip" id="cmp-cards"></div>
+  <div class="an-grid">
+    <div class="chartcard">
+      <h3>Profilo dentro al reparto</h3>
+      <p class="cn">La banda grigia va dal floor al ceiling del ruolo, il trattino è la media. I due pallini sono i giocatori: quanto più a destra, tanto più sopra la norma.</p>
+      <div class="chartwrap" id="cmp-bands"></div>
+      <div class="legend2" id="cmp-lg"></div>
+    </div>
+    <div class="chartcard">
+      <h3>Distribuzione dei punteggi</h3>
+      <p class="cn">Ogni pallino è una partita giocata (2025 e 2026). Le linee verticali sono floor, media e ceiling di una giornata tipo per quel ruolo: serve a vedere chi è costante e chi vive di picchi.</p>
+      <div class="chartwrap" id="cmp-strip"></div>
+      <div class="legend2" id="cmp-strip-lg"></div>
+    </div>
+  </div>
+  <div class="an-grid" style="margin-top:10px">
+    <div class="chartcard">
+      <h3>Numeri a confronto</h3>
+      <p class="cn">In verde il migliore dei due su ogni riga; fra parentesi il riferimento del ruolo.</p>
+      <div style="overflow-x:auto"><table class="antable" id="cmp-table"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Prossime sei giornate</h3>
+      <p class="cn">Quanto concede al loro reparto la difesa che affrontano, settimana per settimana. Sopra 1 è favorevole.</p>
+      <div class="chartwrap" id="cmp-sched"></div>
+      <h3 style="margin-top:14px">Lettura</h3>
+      <div class="verdict2" style="border:0;padding:0"><ul id="cmp-read"></ul></div>
+    </div>
+  </div>
+</div>
+</div>

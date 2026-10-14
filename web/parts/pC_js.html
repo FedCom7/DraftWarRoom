@@ -1,0 +1,390 @@
+<script>
+(()=>{
+'use strict';
+const D=window.DWR;
+const {PLAYERS,PBY,Client,ORDER,TBY,MY,N,ROUNDS,TOTAL,BASE,REPL,surv,esc,pickLabel}=D;
+const $=(s,r=document)=>r.querySelector(s);
+const POSC={QB:'#F47272',RB:'#34D399',WR:'#5FA3F8',TE:'#F4A63B',K:'#BFA8FB',DST:'#9AA8BA'};
+const MAIN=['QB','RB','WR','TE'],ALLP=['QB','RB','WR','TE','K','DST'];
+const START={QB:1,RB:2,WR:2,TE:1,K:1,DST:1};           // + 1 FLEX RB/WR
+const n1=v=>v==null?'—':(Math.round(v*10)/10).toFixed(1);
+const n0=v=>v==null?'—':Math.round(v);
+const sv=v=>(v>=0?'+':'')+Math.round(v);
+
+/* ---------- livello analitico: tier, rank posizionale, ordine di mercato ---------- */
+const byPos={};
+ALLP.forEach(p=>byPos[p]=PLAYERS.filter(x=>x.pos===p).sort((a,b)=>b.proj-a.proj));
+ALLP.forEach(pos=>{
+  const list=byPos[pos],th=Math.max(7,(list[0]?list[0].proj:100)*0.045);
+  let t=1;
+  list.forEach((p,i)=>{
+    p.posRank=i+1;p.cliffGap=0;
+    if(i>0){const gap=list[i-1].proj-p.proj;if(gap>=th&&t<9){t++;p.cliffGap=gap}}
+    p.tier=t;p.ppg=p.proj/17;
+  });
+});
+const mk=p=>p.adp>0?p.adp:p.rank*1.15+20;
+const market=[...PLAYERS].sort((a,b)=>mk(a)-mk(b));
+market.forEach((p,i)=>p.mkt=i+1);
+const projOrder=[...PLAYERS].sort((a,b)=>b.vorp-a.vorp);
+projOrder.forEach((p,i)=>p.vorpRank=i+1);
+const MY_PICKS=ORDER.filter(s=>s.teamId===MY).map(s=>s.overall);
+const posMed={},posMax={};
+ALLP.forEach(pos=>{const top=byPos[pos].slice(0,Math.max(6,REPL[pos]));
+  posMax[pos]=top[0]?top[0].proj:1;posMed[pos]=top[Math.floor(top.length/2)]?top[Math.floor(top.length/2)].proj:1});
+const medOf=(pos,key)=>{const v=byPos[pos].slice(0,REPL[pos]*2).map(p=>p[key]).filter(x=>x!=null&&x>0).sort((a,b)=>a-b);return v.length?v[Math.floor(v.length/2)]:0};
+const MED={};ALLP.forEach(pos=>MED[pos]={ppg25:medOf(pos,'ppg25'),tsh:medOf(pos,'tsh'),car:medOf(pos,'car'),snap:medOf(pos,'snap'),act25:medOf(pos,'act25')});
+
+const S={pos:'ALL',q:'',vbAvail:false,usage:true,scAvail:false,pfPos:'ALL',pfQ:'',sel:null,dpSort:'tot',dpAvail:false};
+const draftedSet=()=>{const m=new Map();Client.picks.forEach(p=>m.set(p.playerId,p));return m};
+const isGone=(p,on)=>on&&draftedSet().has(p.id);
+const pool=on=>{const dm=draftedSet();return on?PLAYERS.filter(p=>!dm.has(p.id)):PLAYERS};
+const posPool=(pos,on)=>{const dm=draftedSet();return byPos[pos].filter(p=>!on||!dm.has(p.id))};
+
+/* ---------- metriche per reparto ---------- */
+function posInfo(pos,onlyAvail){
+  const list=posPool(pos,onlyAvail),base=BASE[pos];
+  const above=list.filter(p=>p.proj>base).length;
+  const best=list[0]||null;
+  let cliffAt=null,cliffVal=0;
+  for(let i=1;i<Math.min(list.length,10);i++){const g=list[i-1].proj-list[i].proj;if(g>cliffVal){cliffVal=g;cliffAt=i}}
+  const starters=START[pos]*N+(pos==='RB'||pos==='WR'?N/2:0);   // FLEX RB/WR diviso tra le due
+  return{pos,list,base,above,best,cliffAt,cliffVal,starters,
+    premium:best?best.proj-base:0,
+    depth:above/Math.max(1,starters)}
+}
+function verdictFor(i){
+  const p=i.pos;
+  if(!i.best)return'Reparto esaurito.';
+  if(p==='K'||p==='DST')return'Interscambiabili: prendine uno negli ultimi due round, mai prima.';
+  if(i.depth>=3)return`Profondissimo: ${i.above} sopra il replacement per ${i.starters} slot. Si può aspettare senza rischio.`;
+  if(i.cliffAt&&i.cliffAt<=3&&i.cliffVal>=15)return`Drop vicino: −${Math.round(i.cliffVal)} pt dopo il #${i.cliffAt}. Se ti serve un ${p}, prendilo prima del salto.`;
+  if(i.depth<=1.2)return`Stretto: solo ${i.above} opzioni utili per ${i.starters} slot. Qui la scarsità è reale.`;
+  return`Equilibrato: ${i.above} opzioni sopra il replacement, premio del migliore +${Math.round(i.premium)} pt.`;
+}
+
+/* ---------- VALUE BOARD ---------- */
+function chips(el,list,cur,cb){
+  el.innerHTML=list.map(c=>`<button data-c="${c}" class="${c===cur?'on':''}">${c==='ALL'?'Tutti':c}</button>`).join('');
+  el.onclick=e=>{const b=e.target.closest('button');if(b)cb(b.dataset.c)};
+}
+function usageLine(p){
+  const o=[];
+  if(p.ppg25)o.push(`<span class="${p.ppg25>=MED[p.pos].ppg25?'up':''}">${n1(p.ppg25)} ppg '25</span>`);
+  if(p.pos==='RB'&&p.car)o.push(`${p.car} corse`);
+  if(['WR','TE','RB'].includes(p.pos)&&p.tsh)o.push(`${n1(p.tsh)}% target`);
+  if(p.snap)o.push(`${n0(p.snap)}% snap`);
+  if(p.age)o.push(`${p.age} anni`);
+  if(p.exp===0)o.push('<span class="fl">rookie</span>');
+  if(p.act25&&p.proj>p.act25*1.18)o.push('<span class="fl">proj in salita</span>');
+  if(p.act25&&p.proj<p.act25*0.85)o.push('<span class="dn">proj in calo</span>');
+  return o.join(' · ');
+}
+function renderValue(){
+  const positions=S.pos==='ALL'?ALLP:[S.pos];
+  const dm=draftedSet();
+  $('#vb-info').textContent=`${PLAYERS.length} giocatori · ${PLAYERS.length-dm.size} liberi nella demo · tier ricalcolati sulle proiezioni`;
+  $('#vb-strip').innerHTML=positions.map(pos=>{
+    const i=posInfo(pos,true);
+    return`<div class="sc p-${pos}"><h4>${pos}</h4>
+      <div class="kv"><span>slot in lega</span><b>${i.starters}</b></div>
+      <div class="kv"><span>sopra replacement</span><b>${i.above}</b></div>
+      <div class="kv"><span>replacement (${REPL[pos]}°)</span><b>${n0(i.base)} pt</b></div>
+      <div class="kv"><span>migliore libero</span><b>${i.best?sv(i.best.vorp):'—'}</b></div>
+      <div class="verd">${verdictFor(i)}</div></div>`}).join('');
+  $('#vb-cols').innerHTML=positions.map(pos=>{
+    let list=byPos[pos].filter(p=>(!S.q||p.name.toLowerCase().includes(S.q))&&(!S.vbAvail||!dm.has(p.id)));
+    list=list.slice(0,pos==='QB'||pos==='TE'?18:pos==='K'||pos==='DST'?10:26);
+    const max=Math.max(...list.map(p=>p.proj),1);
+    let h=`<div class="tcol"><h3><span class="pos pos-${pos}">${pos}</span>${pos==='DST'?'D/ST':pos} <small>${list.length} mostrati · repl ${n0(BASE[pos])} pt</small></h3>`;
+    let cur=-1;
+    list.forEach(p=>{
+      if(p.tier!==cur){
+        cur=p.tier;
+        const tp=list.filter(x=>x.tier===cur);
+        h+=`${cur>1?'</div>':''}<div class="tier"><div class="th">TIER <b>${cur}</b> · ${tp.length} ${tp.length===1?'nome':'nomi'} · ${n0(tp[tp.length-1].proj)}–${n0(tp[0].proj)} pt${p.cliffGap?`<span class="cliff">↓ drop −${Math.round(p.cliffGap)} pt</span>`:''}</div>`;
+      }
+      const gone=dm.get(p.id);
+      h+=`<div class="prow${gone?' gone':''}" data-id="${p.id}">
+        <span class="nm">${esc(p.name)}${window.DWR_MEMO?window.DWR_MEMO(p.id):''}<small>${p.nfl}${p.bye?' · bye '+p.bye:''}${p.inj?' · '+p.inj:''}${gone?' · '+esc(TBY.get(gone.teamId).abbr):''}</small></span>
+        <span class="vv">${n0(p.proj)}<small style="color:var(--k-muted)"> / ${sv(p.vorp)}</small></span>
+        <span class="bar"><i style="width:${Math.max(3,p.proj/max*100)}%;background:${POSC[pos]}"></i></span>
+        ${S.usage?`<span class="mt">${usageLine(p)}</span>`:''}</div>`;
+    });
+    return h+'</div></div>';
+  }).join('');
+  $('#vb-cols').onclick=e=>{const r=e.target.closest('.prow');if(r&&window.openPlayer)window.openPlayer(+r.dataset.id)};
+}
+
+/* ---------- grafici SVG ---------- */
+function svgEl(w,h,inner){return`<svg viewBox="0 0 ${w} ${h}" role="img">${inner}</svg>`}
+function tip(wrap,html,x,y){
+  let t=wrap.querySelector('.tt');
+  if(!html){if(t)t.remove();return}
+  if(!t){t=document.createElement('div');t.className='tt';wrap.appendChild(t)}
+  t.innerHTML=html;
+  const w=wrap.clientWidth;
+  t.style.left=Math.min(Math.max(4,x-t.offsetWidth/2),w-t.offsetWidth-4)+'px';
+  t.style.top=Math.max(0,y-t.offsetHeight-12)+'px';
+}
+function curveChart(){
+  const W=580,H=300,L=40,R=18,T=12,B=28,maxR=24;
+  const lists={};MAIN.forEach(p=>lists[p]=posPool(p,S.scAvail).slice(0,maxR));
+  const maxY=Math.max(...MAIN.flatMap(p=>lists[p].map(x=>x.proj)),1);
+  const x=r=>L+(r-1)/(maxR-1)*(W-L-R), y=v=>H-B-v/maxY*(H-B-T);
+  let g='';
+  for(let i=0;i<=4;i++){const v=maxY*i/4;g+=`<line x1="${L}" y1="${y(v)}" x2="${W-R}" y2="${y(v)}" stroke="#1E2833" stroke-width="1"/><text x="${L-6}" y="${y(v)+3.5}" fill="#7C8996" font-size="9" text-anchor="end">${Math.round(v)}</text>`}
+  [1,4,8,12,16,20,24].forEach(r=>{g+=`<text x="${x(r)}" y="${H-B+14}" fill="#7C8996" font-size="9" text-anchor="middle">${r}</text>`});
+  g+=`<text x="${(W-L)/2+L}" y="${H-2}" fill="#7C8996" font-size="9" text-anchor="middle">rank nella posizione</text>`;
+  const pts=[],ends=[];
+  MAIN.forEach(pos=>{
+    const l=lists[pos];if(!l.length)return;
+    const d=l.map((p,i)=>`${i?'L':'M'}${x(i+1).toFixed(1)} ${y(p.proj).toFixed(1)}`).join(' ');
+    g+=`<path d="${d}" fill="none" stroke="${POSC[pos]}" stroke-width="2" stroke-linejoin="round"${pos==='QB'?' stroke-dasharray="6 3"':''}/>`;
+    const last=l[Math.min(l.length,maxR)-1];
+    let ly=y(last.proj)+3;
+    while(ends.some(e=>Math.abs(e-ly)<11))ly+=11;
+    ends.push(ly);
+    g+=`<text x="${x(Math.min(l.length,maxR))+4}" y="${ly.toFixed(1)}" fill="${POSC[pos]}" font-size="10" font-weight="600">${pos}</text>`;
+    const rp=l.find(p=>p.posRank>=REPL[pos])||l[l.length-1];
+    if(rp&&rp.posRank<=maxR){
+      g+=`<circle cx="${x(rp.posRank)}" cy="${y(rp.proj)}" r="4.5" fill="#0A0E13" stroke="${POSC[pos]}" stroke-width="2"/>`;
+      g+=`<text x="${x(rp.posRank)}" y="${y(rp.proj)-9}" fill="#8593A2" font-size="8.5" text-anchor="middle">repl ${pos}</text>`}
+    l.forEach((p,i)=>pts.push({px:x(i+1),py:y(p.proj),p}));
+  });
+  const wrap=$('#ch-curve');wrap.innerHTML=svgEl(W,H,g);
+  $('#ch-curve-lg').innerHTML=MAIN.map(p=>`<span><i style="background:${POSC[p]}${p==='QB'?';background-image:repeating-linear-gradient(90deg,'+POSC[p]+' 0 5px,transparent 5px 8px)':''}"></i>${p}</span>`).join('')+'<span><i style="background:#0A0E13;border:2px solid #8593A2;width:9px;height:9px;border-radius:50%"></i>replacement level</span>';
+  const svg=wrap.querySelector('svg');
+  svg.addEventListener('pointermove',e=>{
+    const b=svg.getBoundingClientRect(),sx=(e.clientX-b.left)/b.width*W,sy=(e.clientY-b.top)/b.height*H;
+    let best=null,bd=1e9;
+    pts.forEach(q=>{const d=(q.px-sx)**2+(q.py-sy)**2;if(d<bd){bd=d;best=q}});
+    if(best&&bd<900){const p=best.p;
+      tip(wrap,`<b>${esc(p.name)}</b><span>${p.pos}${p.posRank} · ${p.nfl} · ADP ${p.adp||'—'}</span><span>${n0(p.proj)} pt proiettati · VORP ${sv(p.vorp)}</span>`,
+        best.px/W*b.width,best.py/H*b.height)}
+    else tip(wrap,null)});
+  svg.addEventListener('pointerleave',()=>tip(wrap,null));
+}
+function needW(pos,roster,round){
+  const c=roster.filter(p=>p.pos===pos).length;
+  if(pos==='K'||pos==='DST')return round>=14&&c===0?1.2:0.02;
+  const start={QB:1,RB:2,WR:2,TE:1}[pos];
+  if(c<start)return 1;
+  const flex=roster.filter(p=>p.pos==='RB'||p.pos==='WR').length;
+  if((pos==='RB'||pos==='WR')&&flex<5)return 0.85;
+  return{QB:0.3,TE:0.35,RB:0.7,WR:0.7}[pos];
+}
+/* simulazione sequenziale: gli avversari pescano dalla cima del mercato, tu scegli e il giocatore esce dal pool */
+function planData(){
+  const dm=draftedSet();
+  let left=market.filter(p=>!S.scAvail||!dm.has(p.id));
+  const roster=[],rows=[];let prev=0;
+  MY_PICKS.forEach((ov,idx)=>{
+    left=left.slice(Math.max(0,ov-prev-1));
+    const round=Math.ceil(ov/N);
+    const perPos={};MAIN.forEach(pos=>{const l=left.filter(p=>p.pos===pos);perPos[pos]=l.length?l.reduce((a,b)=>b.vorp>a.vorp?b:a):null});
+    const sc=p=>p.vorp*needW(p.pos,roster,round);
+    const best=left.reduce((a,b)=>!a||sc(b)>sc(a)?b:a,null);
+    const nx=MY_PICKS[idx+1];
+    rows.push({ov,round,label:pickLabel(ov),best,perPos,double:nx!=null&&nx-ov<=2,
+      names:left.filter(p=>p!==best).slice(0,3).map(p=>p.name),roster:roster.slice()});
+    if(best){roster.push(best);left=left.filter(p=>p!==best)}
+    prev=ov;
+  });
+  return rows;
+}
+function planChart(rows){
+  const W=580,H=300,L=40,R=14,T=16,B=34;
+  const maxY=Math.max(...rows.map(r=>r.best?r.best.vorp:0),10);
+  const bw=(W-L-R)/rows.length,y=v=>H-B-Math.max(0,v)/maxY*(H-B-T);
+  let g='';
+  for(let i=0;i<=4;i++){const v=maxY*i/4;g+=`<line x1="${L}" y1="${y(v)}" x2="${W-R}" y2="${y(v)}" stroke="#1E2833"/><text x="${L-6}" y="${y(v)+3.5}" fill="#7C8996" font-size="9" text-anchor="end">${Math.round(v)}</text>`}
+  rows.forEach((r,i)=>{
+    const v=r.best?r.best.vorp:0,px=L+i*bw+2,w=bw-4,py=y(v),h=H-B-py;
+    g+=`<rect x="${px.toFixed(1)}" y="${py.toFixed(1)}" width="${w.toFixed(1)}" height="${Math.max(1,h).toFixed(1)}" rx="4" fill="${r.double?'#F2D82E':'#3CC7F5'}" opacity="${r.best?0.92:0.3}"/>`;
+    if(r.best&&(i<6||v>maxY*0.45))g+=`<text x="${(px+w/2).toFixed(1)}" y="${(py-5).toFixed(1)}" fill="${POSC[r.best.pos]}" font-size="9" font-weight="700" text-anchor="middle">${r.best.pos}</text>`;
+    g+=`<text x="${(px+w/2).toFixed(1)}" y="${H-B+13}" fill="#7C8996" font-size="8.5" text-anchor="middle">${r.label}</text>`;
+  });
+  g+=`<text x="${L}" y="${H-4}" fill="#7C8996" font-size="9">VORP del miglior giocatore atteso libero al tuo turno</text>`;
+  const wrap=$('#ch-plan');wrap.innerHTML=svgEl(W,H,g);
+  const svg=wrap.querySelector('svg');
+  svg.addEventListener('pointermove',e=>{
+    const b=svg.getBoundingClientRect(),sx=(e.clientX-b.left)/b.width*W;
+    const i=Math.floor((sx-L)/bw);const r=rows[i];
+    if(r&&r.best)tip(wrap,`<b>${r.label} · pick ${r.ov}</b><span>${esc(r.best.name)} ${r.best.pos} · VORP ${sv(r.best.vorp)}</span><span>attesi liberi: ${r.names.slice(0,3).map(esc).join(', ')}</span>`,(L+i*bw+bw/2)/W*b.width,y(r.best.vorp)/H*b.height);
+    else tip(wrap,null)});
+  svg.addEventListener('pointerleave',()=>tip(wrap,null));
+}
+function renderScarcity(){
+  const infos=ALLP.map(p=>posInfo(p,S.scAvail));
+  $('#sc-strip').innerHTML=infos.filter(i=>MAIN.includes(i.pos)).map(i=>`<div class="sc p-${i.pos}"><h4>${i.pos}</h4>
+    <div class="kv"><span>premio del migliore</span><b>+${n0(i.premium)} pt</b></div>
+    <div class="kv"><span>opzioni utili / slot</span><b>${i.above} / ${i.starters}</b></div>
+    <div class="kv"><span>prossimo drop</span><b>${i.cliffAt?`#${i.cliffAt} (−${n0(i.cliffVal)})`:'—'}</b></div>
+    <div class="verd">${verdictFor(i)}</div></div>`).join('');
+  curveChart();
+  const rows=planData();planChart(rows);
+  $('#sc-table').innerHTML=`<thead><tr><th>Pos</th><th class="num">Slot</th><th class="num">Sopra repl.</th><th class="num">Replacement</th><th>Migliore libero</th><th class="num">Premio</th><th>Drop</th><th>Lettura</th></tr></thead><tbody>`+
+    infos.map(i=>`<tr><td><span class="pos pos-${i.pos}">${i.pos}</span></td><td class="num">${i.starters}</td><td class="num">${i.above}</td><td class="num">${n0(i.base)}</td>
+      <td>${i.best?esc(i.best.name):'—'}</td><td class="num">+${n0(i.premium)}</td><td>${i.cliffAt?`dopo #${i.cliffAt} −${n0(i.cliffVal)}`:'—'}</td>
+      <td style="white-space:normal;max-width:34ch;color:var(--k-muted)">${verdictFor(i)}</td></tr>`).join('')+'</tbody>';
+  $('#sc-plan').innerHTML=`<thead><tr><th>Turno</th><th>Miglior atteso</th>${MAIN.map(p=>`<th class="num">${p}</th>`).join('')}<th>Indicazione</th></tr></thead><tbody>`+
+    rows.map(r=>{
+      const need=MAIN.filter(p=>r.roster.filter(x=>x.pos===p).length<{QB:1,RB:2,WR:2,TE:1}[p]);
+      const advice=!r.best?'—':`${r.double?'Doppio turno · ':''}${r.best.pos}${r.best.cliffGap>12?' prima del drop di tier':''}${need.length?` · mancano ancora ${need.join(', ')}`:' · titolari completi'}`;
+      return`<tr class="${r.double?'mine':''}"><td><b>${r.label}</b><small style="color:var(--k-muted)"> #${r.ov}</small></td>
+        <td${r.best?` data-pid="${r.best.id}"`:''}>${r.best?`<span class="pos pos-${r.best.pos}">${r.best.pos}</span> ${esc(r.best.name)}`:'—'}</td>
+        ${MAIN.map(p=>`<td class="num" style="color:${r.perPos[p]?POSC[p]:'#556'}">${r.perPos[p]?sv(r.perPos[p].vorp):'—'}</td>`).join('')}
+        <td style="color:var(--k-muted)">${advice}</td></tr>`}).join('')+'</tbody>';
+}
+
+/* ---------- PROFILI ---------- */
+function openProfile(id){S.sel=id;S.pfPos='ALL';window.DWR_SETVIEW('profiles');renderProfiles();
+  const el=$(`#pf-list [data-id="${id}"]`);if(el)el.scrollIntoView({block:'center'})}
+function renderProfiles(){
+  const list=PLAYERS.filter(p=>(S.pfPos==='ALL'||p.pos===S.pfPos)&&(!S.pfQ||p.name.toLowerCase().includes(S.pfQ))).sort((a,b)=>b.proj-a.proj);
+  if(!S.sel||!list.some(p=>p.id===S.sel))S.sel=list.length?list[0].id:null;
+  $('#pf-list').innerHTML=list.slice(0,160).map(p=>`<div class="pi${p.id===S.sel?' on':''}" data-id="${p.id}">
+    <span class="pos pos-${p.pos}">${p.pos}</span><span><b>${esc(p.name)}</b>${window.DWR_MEMO?window.DWR_MEMO(p.id):''}<small>${p.nfl}${p.bye?' · bye '+p.bye:''} · tier ${p.tier} · ADP ${p.adp||'—'}</small></span>
+    <span class="pv">${n0(p.proj)}</span></div>`).join('')||'<div class="pi">Nessun risultato</div>';
+  $('#pf-list').onclick=e=>{const r=e.target.closest('[data-id]');if(r){S.sel=+r.dataset.id;renderProfiles()}};
+  $('#pf-card').innerHTML=S.sel?cardHtml(PBY.get(S.sel)):'';
+}
+function bar(label,val,ref,max,unit,med){
+  const pct=max?Math.max(0,Math.min(100,val/max*100)):0,mp=max&&med?Math.min(100,med/max*100):null;
+  return`<div class="mrow"><span class="l">${label}</span><span class="t"><i style="width:${pct}%"></i>${mp!=null?`<u style="left:${mp}%" title="mediana di posizione"></u>`:''}</span><span class="v">${val==null?'—':n1(val)}${unit||''}</span></div>`;
+}
+function cardHtml(p){
+  const dm=draftedSet(),pk=dm.get(p.id),m=MED[p.pos],mx=posMax[p.pos];
+  const up=[],risk=[],read=[];
+  const isRec=['WR','TE'].includes(p.pos),isRB=p.pos==='RB';
+  if(isRec||isRB){
+    if(p.tsh>=26)up.push(`Target share dominante (${n1(p.tsh)}%): il volume è il predittore più stabile del rendimento fantasy.`);
+    else if(p.tsh>=18)up.push(`Buon volume aereo (${n1(p.tsh)}% dei target).`);
+    else if(p.tsh>0&&isRec)risk.push(`Volume ricettivo basso (${n1(p.tsh)}%): dipende dai TD, quindi molto variabile.`);
+    if(p.wopr>=0.6)up.push(`WOPR ${n1(p.wopr*100)/100}: quota di target e di air yards entrambe alte.`);
+  }
+  if(isRB){
+    if(p.car>=240)up.push(`Carico da titolare assoluto (${p.car} corse nel 2025).`);
+    else if(p.car>=140)read.push(`Backfield condiviso (${p.car} corse): il tetto dipende dai TD.`);
+    else if(p.car>0)risk.push(`Pochi tocchi (${p.car} corse): serve un infortunio davanti a lui.`);
+    if(p.tsh>=8)up.push(`Usato anche nel passing game (${n1(p.tsh)}% target): in PPR vale molto.`);
+  }
+  if(p.snap!=null){
+    if(p.snap>=80)up.push(`In campo quasi sempre (${n0(p.snap)}% degli snap).`);
+    else if(p.snap<55&&p.snap>0)risk.push(`Solo ${n0(p.snap)}% degli snap: ruolo a rotazione.`);
+  }
+  if(p.ppg25!=null&&m.ppg25)read.push(`${n1(p.ppg25)} punti a gara nel 2025 contro una mediana di reparto di ${n1(m.ppg25)}.`);
+  if(p.g25&&p.g25<=12)risk.push(`Solo ${p.g25} gare giocate nel 2025: storico incompleto o problemi fisici.`);
+  if(p.exp===0){read.push('Rookie: nessuno storico NFL, la proiezione dipende dal contesto e dal draft capital.')}
+  else if(p.exp===1)read.push('Secondo anno: è la finestra in cui i WR fanno più spesso il salto.');
+  if(p.age){
+    if(isRB&&p.age>=28)risk.push(`${p.age} anni: per un RB inizia la discesa attesa.`);
+    else if(isRec&&p.age>=30)risk.push(`${p.age} anni: rischio di calo per un ricevitore.`);
+    else if(p.age<=24&&(p.tsh>=18||p.car>=180))up.push(`${p.age} anni con volume già alto: profilo in crescita.`);
+  }
+  if(p.act25&&p.proj){
+    const d=(p.proj-p.act25)/p.act25*100;
+    if(d>18)read.push(`ESPN proietta ${n0(d)}% in più del 2025: la stima incorpora un cambio di ruolo o di contesto, quindi è la parte più incerta.`);
+    else if(d<-15)read.push(`Proiezione ${n0(-d)}% sotto il 2025: attesa di calo o di minutaggio ridotto.`);
+  }
+  if(p.ppg26!=null&&p.ppg25!=null){
+    if(p.ppg26>p.ppg25*1.25)up.push(`Partenza 2026 sopra il ritmo dell'anno scorso (${n1(p.ppg26)} vs ${n1(p.ppg25)} ppg, campione di 2 gare).`);
+    else if(p.ppg26<p.ppg25*0.7)risk.push(`Partenza lenta nel 2026 (${n1(p.ppg26)} ppg su 2 gare).`);
+  }
+  if(p.adp>0&&p.vorpRank){
+    const d=p.adp-p.vorpRank;
+    if(d>=12)up.push(`Valore rispetto al mercato: ADP ${p.adp} ma ${p.vorpRank}° per VORP nella tua lega.`);
+    else if(d<=-12)risk.push(`Mercato più caro del valore: ADP ${p.adp} contro il ${p.vorpRank}° posto per VORP.`);
+  }
+  if(p.inj)risk.push(`Stato fisico ESPN: ${p.inj}.`);
+  if(p.dc&&p.dc>1)risk.push(`Depth chart Sleeper: ${p.dc}° nel suo ruolo.`);
+  if(p.cliffGap>=12)read.push(`È il primo nome del tier ${p.tier}: sopra di lui c'è un drop di ${n0(p.cliffGap)} punti.`);
+  const i=posInfo(p.pos,true);
+  return`<div class="card2">
+    <div class="hdr">
+      <div><h3>${esc(p.name)}</h3><div class="sub"><span class="pos pos-${p.pos}">${p.pos}</span> ${p.pos}${p.posRank} · ${p.nfl} · ${p.bye?'bye '+p.bye:'bye n/d'} · ${p.age?p.age+' anni':'età n/d'} · ${p.exp!=null?p.exp+' stagioni':''} ${pk?`· <span class="tag2 bad">demo: preso da ${esc(TBY.get(pk.teamId).abbr)} alla ${pickLabel(pk.overall)}</span>`:''}</div></div>
+      <div class="big"><b>${n0(p.proj)}</b><small>PROIEZIONE 2026 · ${n1(p.ppg)} ppg</small></div>
+      <div class="big"><b style="color:var(--k-ink)">${sv(p.vorp)}</b><small>VORP · tier ${p.tier} · ADP ${p.adp||'—'}</small></div>
+    </div>
+    <div class="cols2">
+      <div>
+        <h4 style="margin:0 0 4px;font:600 11px var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--k-muted)">Volume e contesto</h4>
+        ${bar('Proiezione 2026',p.proj,null,mx,' pt',posMed[p.pos])}
+        ${bar('Punti 2025',p.act25,null,mx,' pt',m.act25)}
+        ${bar('Punti a gara 2025',p.ppg25,null,Math.max(mx/17*1.2,1),'',m.ppg25)}
+        ${isRB||p.pos==='QB'?bar('Corse 2025',p.car,null,Math.max(320,p.car||0),'',m.car):bar('Target share 2025',p.tsh,null,35,'%',m.tsh)}
+        ${bar('Snap % 2025',p.snap,null,100,'%',m.snap)}
+        ${p.ppg26!=null?bar('Punti a gara 2026',p.ppg26,null,Math.max(mx/17*1.2,1),'',m.ppg25):''}
+        <p style="margin:8px 0 0;font-size:11.5px;color:var(--k-muted)">Nel reparto ${p.pos} restano ${i.above} giocatori sopra il replacement per ${i.starters} slot di lega.</p>
+      </div>
+      <div class="verdict2" style="border:0;padding:0;margin:0">
+        <h4>Perché potrebbe rendere</h4><ul>${up.length?up.map(t=>`<li>${t}</li>`).join(''):'<li style="color:var(--k-muted)">Nessun segnale forte di volume o efficienza.</li>'}</ul>
+        <h4 style="margin-top:10px">Rischi</h4><ul>${risk.length?risk.map(t=>`<li>${t}</li>`).join(''):'<li style="color:var(--k-muted)">Nessun rischio evidente nei dati disponibili.</li>'}</ul>
+        ${read.length?`<h4 style="margin-top:10px">Da tenere presente</h4><ul>${read.map(t=>`<li>${t}</li>`).join('')}</ul>`:''}
+      </div>
+    </div>
+    <div class="verdict2"><h4>Fonti</h4><p style="margin:0;font-size:11.5px;color:var(--k-muted)">Proiezione, rank, ADP e stato fisico: ESPN (lega Topina). Utilizzo, snap e punti 2025: nflverse. Età, esperienza e depth chart: Sleeper. Le barre confrontano il giocatore con il massimo del suo reparto; il trattino è la mediana dei titolari di reparto.</p></div>
+  </div>`;
+}
+
+/* ---------- REPARTI NFL ---------- */
+function renderDepth(){
+  const dm=draftedSet();
+  const teams={};
+  PLAYERS.filter(p=>p.nfl&&p.nfl!=='FA'&&p.proj>0&&(!S.dpAvail||!dm.has(p.id))).forEach(p=>{(teams[p.nfl]=teams[p.nfl]||[]).push(p)});
+  const rows=Object.entries(teams).map(([t,pl])=>{
+    const g=pos=>pl.filter(p=>p.pos===pos).sort((a,b)=>b.proj-a.proj);
+    const off=['QB','RB','WR','TE'].flatMap(g);
+    const tot=off.reduce((s,p)=>s+p.proj,0);
+    const rb=g('RB'),wr=g('WR'),te=g('TE'),qb=g('QB');
+    const shr=l=>l.length?l[0].proj/Math.max(1,l.reduce((s,p)=>s+p.proj,0)):0;
+    return{t,pl,qb,rb,wr,te,tot,rbShare:shr(rb),wrShare:shr(wr),bye:pl.find(p=>p.bye)?.bye||null,
+      byPosTot:{QB:qb.reduce((s,p)=>s+p.proj,0),RB:rb.reduce((s,p)=>s+p.proj,0),WR:wr.reduce((s,p)=>s+p.proj,0),TE:te.reduce((s,p)=>s+p.proj,0)}}
+  });
+  const key=S.dpSort;
+  rows.sort((a,b)=>key==='tot'?b.tot-a.tot:key==='bye'?((a.bye||99)-(b.bye||99)):b.byPosTot[key]-a.byPosTot[key]);
+  const maxTot=Math.max(...rows.map(r=>r.tot),1);
+  const teTop=byPos.TE.slice(0,6).map(p=>p.nfl);
+  $('#dp-teams').innerHTML=rows.map((r,i)=>{
+    const tags=[];
+    if(i<8)tags.push('<span class="tag2 good">attacco top 8</span>');
+    if(i>=rows.length-6)tags.push('<span class="tag2 bad">attacco povero</span>');
+    if(r.rb.length){if(r.rbShare>=.62)tags.push('<span class="tag2 acc">RB1 chiaro</span>');
+      else if(r.rbShare>=.42)tags.push('<span class="tag2 warn">backfield diviso</span>');
+      else tags.push('<span class="tag2 warn">committee</span>')}
+    if(r.wrShare>=.45)tags.push('<span class="tag2 acc">WR1 dominante</span>');
+    if(teTop.includes(r.t))tags.push('<span class="tag2 good">TE di valore</span>');
+    if(r.rb[1]&&r.rb[1].proj>=110)tags.push('<span class="tag2">handcuff utile</span>');
+    const un=p=>`<div class="un"><span class="p" style="background:${POSC[p.pos]}">${p.pos}</span><span class="n">${esc(p.name)}${dm.has(p.id)?' ·':''}</span><span class="v">${n0(p.proj)}</span></div>`;
+    return`<div class="tm"><div class="th2"><b>${r.t}</b><small>${r.bye?'bye '+r.bye:'bye n/d'}</small><span class="tot">${n0(r.tot)} pt</span></div>
+      <div class="mini" style="width:100%;margin:0 0 8px"><i style="width:${r.tot/maxTot*100}%;background:var(--k-y)"></i></div>
+      ${r.qb.slice(0,1).map(un).join('')}${r.rb.slice(0,3).map(un).join('')}${r.wr.slice(0,3).map(un).join('')}${r.te.slice(0,1).map(un).join('')}
+      <div class="tags">${tags.join('')}</div></div>`}).join('');
+}
+
+/* ---------- wiring ---------- */
+function reChips(){
+  chips($('#vb-pos'),['ALL',...ALLP],S.pos,c=>{S.pos=c;reChips();renderValue()});
+  chips($('#pf-pos'),['ALL',...ALLP],S.pfPos,c=>{S.pfPos=c;reChips();renderProfiles()});
+}
+reChips();
+$('#vb-q').oninput=e=>{S.q=e.target.value.trim().toLowerCase();renderValue()};
+$('#vb-avail').onchange=e=>{S.vbAvail=e.target.checked;renderValue()};
+$('#vb-usage').onchange=e=>{S.usage=e.target.checked;renderValue()};
+$('#sc-avail').onchange=e=>{S.scAvail=e.target.checked;renderScarcity()};
+$('#pf-q').oninput=e=>{S.pfQ=e.target.value.trim().toLowerCase();renderProfiles()};
+$('#dp-sort').onchange=e=>{S.dpSort=e.target.value;renderDepth()};
+$('#dp-avail').onchange=e=>{S.dpAvail=e.target.checked;renderDepth()};
+
+const R={value:renderValue,scarcity:renderScarcity,profiles:renderProfiles,depth:renderDepth};
+/* ponte per le pagine di analisi aggiuntive */
+window.DWR2={byPos,market,POSC,MAIN,ALLP,S,draftedSet,chips,tip,svgEl,n0,n1,sv,needW,MY_PICKS,R,posInfo,openProfile};
+let active=null;
+window.DWR_VIEW=v=>{active=R[v]?v:null;if(active)R[active]()};
+window.DWR_REFRESH=()=>{if(active&&(S.vbAvail||S.scAvail||S.dpAvail||active==='profiles'))R[active]()};
+renderValue();                                   // la value board è pronta anche prima di aprirla
+const cur=(location.hash||'#plan').slice(1);     // p10 ha già impostato la vista prima che questo script esistesse
+if(R[cur])window.DWR_VIEW(cur);
+})();
+</script>

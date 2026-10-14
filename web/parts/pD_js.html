@@ -1,0 +1,582 @@
+<script>
+(()=>{
+'use strict';
+const D=window.DWR,A=window.DWR2;
+const {PLAYERS,PBY,TBY,MY,N,ROUNDS,TOTAL,ORDER,pickLabel,esc}=D;
+const {byPos,market,POSC,MAIN,ALLP,S,draftedSet,chips,tip,svgEl,n0,n1,sv,needW,MY_PICKS,R}=A;
+const $=(s,r=document)=>r.querySelector(s);
+const SCHED=__SCHED__, HIST=__HIST__, PICKS26=__PICKS26__;
+const TOP=window.TOPINA;
+/* fantasy concessi per ruolo: base 2025 completa di Topina (già nello scoring della lega), come rapporto sulla media */
+const FPA=(()=>{const src=TOP.fpa25,POSS=['QB','RB','WR','TE'],avg={};
+  POSS.forEach(p=>{const v=Object.values(src).map(t=>t[p]&&t[p].v).filter(x=>x!=null);avg[p]=v.reduce((a,b)=>a+b,0)/Math.max(1,v.length)});
+  const o={};Object.entries(src).forEach(([t,f])=>{o[t]={};POSS.forEach(p=>{if(f[p]&&f[p].v!=null)o[t][p]=f[p].v/avg[p]})});return o})();
+const FPARANK=(t,p)=>((TOP.fpa25[t]||{})[p]||{}).r;
+const MKEY={3:'sommo',1:'oscurus',2:'lasers',4:'capi'};
+const WEEKS={all:[...Array(17)].map((_,i)=>i+1),po:[15,16,17],early:[1,2,3,4,5,6]};
+const f2=v=>v==null?'—':v.toFixed(2);
+function gauss(){let u=0,v=0;while(!u)u=Math.random();while(!v)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)}
+const P2={pos:'ALL',sort:'opp',fa:true,sdPos:'WR',sdWin:'po',a:null,b:null};
+
+/* ================= AVVERSARI ================= */
+const RIVALS=[3,1,2,4];                                  // tu per primo
+function histAgg(eid){
+  const h=HIST[eid];if(!h)return null;
+  const key=MKEY[eid],seasons=TOP.hist.seasons;
+  const years=Object.keys(seasons).filter(y=>+y<2026);
+  const pf=years.map(y=>(seasons[y][key]||{}).pf||0).filter(Boolean);
+  const share=h.share||{},dist=h.distinct||{};
+  return{name:h.name,seasons:years.length,share,
+    tot:pf.length?Math.round(pf.reduce((a,b)=>a+b,0)/pf.length):0,
+    usedQB:dist.QB||0,usedDST:dist.DST||0,usedK:dist.K||0,usedRB:dist.RB||0,usedWR:dist.WR||0,
+    top:h.top||[]}
+}
+function draft26(eid){
+  return PICKS26.filter(p=>p[1]===eid).map(p=>({overall:p[0],player:PBY.get(p[2])})).filter(p=>p.player)
+}
+function leagueAvg(){
+  const all=RIVALS.map(histAgg).filter(Boolean);
+  const o={usedQB:0,usedDST:0,usedRB:0,share:{}};
+  all.forEach(a=>{o.usedQB+=a.usedQB/all.length;o.usedDST+=a.usedDST/all.length;o.usedRB+=a.usedRB/all.length;
+    ALLP.forEach(p=>o.share[p]=(o.share[p]||0)+(a.share[p]||0)/all.length)});
+  return o}
+function rivalRead(a,d26){
+  const L=leagueAvg();
+  const out=[];
+  const seq=d26.map(x=>x.player.pos);
+  const qbAt=seq.indexOf('QB'),teAt=seq.indexOf('TE');
+  if(qbAt>=0&&qbAt<=2)out.push(`Prende il QB presto: nel 2026 alla sua pick numero ${qbAt+1}.`);
+  else if(qbAt>=0)out.push(`Aspetta sul QB: nel 2026 l'ha preso alla sua pick numero ${qbAt+1}.`);
+  if(a.usedQB<=L.usedQB-0.6)out.push(`Tiene il QB fisso più degli altri (${n1(a.usedQB)} per stagione contro una media di lega di ${n1(L.usedQB)}): è il tipo da prenderne uno buono e non pensarci più.`);
+  else if(a.usedQB>=L.usedQB+0.6)out.push(`Ruota i QB più di tutti (${n1(a.usedQB)} contro ${n1(L.usedQB)} di media): li pesca dai waiver, quindi difficilmente ne draftera uno presto.`);
+  if(a.usedDST>=L.usedDST+0.8)out.push(`Streama la difesa più degli altri (${n1(a.usedDST)} per stagione): non la prenderà presto.`);
+  const dev=ALLP.map(p=>[p,(a.share[p]||0)-(L.share[p]||0)]).sort((x,y)=>y[1]-x[1]);
+  if(dev[0]&&dev[0][1]>=1.2)out.push(`Rispetto agli altri raccoglie più punti dai ${dev[0][0]} (${dev[0][1]>0?'+':''}${n1(dev[0][1])} punti percentuali).`);
+  const last=dev[dev.length-1];
+  if(last&&last[1]<=-1.2)out.push(`Rinuncia ai ${last[0]} più degli altri (${n1(last[1])} punti percentuali).`);
+  if(teAt>=0&&teAt<=3)out.push(`Investe sul TE presto (pick numero ${teAt+1} nel 2026).`);
+  const first=d26[0];
+  if(first)out.push(`Prima scelta 2026: ${first.player.name} (${first.player.pos}).`);
+  return out;
+}
+function dnaFor(eid){
+  const k=MKEY[eid],m=TOP.dna.managers[k];if(!m)return[];
+  const meta={};TOP.dna.traits.forEach(t=>meta[t.id]=t);
+  return Object.entries(m.traits).map(([id,v])=>({id,...v,meta:meta[id]||{}}))
+    .filter(t=>['signature','differs'].includes(t.meta.tier)&&Math.abs(t.z)>=0.7)
+    .sort((a,b)=>Math.abs(b.z)-Math.abs(a.z)).slice(0,5);
+}
+function draftHist(eid){
+  const rows=TOP.drafts[MKEY[eid]]||[];
+  const years=[...new Set(rows.map(r=>r.y))].sort();
+  const withAdp=rows.filter(r=>r.ar!=null);   // 'ar' = posto atteso dal mercato dentro quella stessa draft
+  const reach=withAdp.length?withAdp.reduce((s,r)=>s+(r.ar-r.p),0)/withAdp.length:null;
+  const firstQB=years.map(y=>{const q=rows.filter(r=>r.y===y&&r.pos==='QB').sort((a,b)=>a.p-b.p)[0];return q?Math.ceil(q.p/4):null}).filter(Boolean);
+  const early=rows.filter(r=>r.p<=12);
+  const mix={};early.forEach(r=>mix[r.pos]=(mix[r.pos]||0)+1);
+  const rep={};rows.forEach(r=>{const k=r.n;rep[k]=(rep[k]||0)+1});
+  const loyal=Object.entries(rep).filter(([,c])=>c>=3).sort((a,b)=>b[1]-a[1]).slice(0,4);
+  return{n:rows.length,years,reach,firstQB:firstQB.length?firstQB.reduce((a,b)=>a+b,0)/firstQB.length:null,mix,loyal,rows}
+}
+function renderRivals(){
+  $('#rv-cards').innerHTML=RIVALS.map(eid=>{
+    const a=histAgg(eid),d26=draft26(eid);if(!a)return'';
+    const me=eid===MY;
+    const seq=d26.slice(0,8).map(x=>`<span class="pos pos-${x.player.pos}" title="${esc(x.player.name)}">${x.player.pos}</span>`).join(' ');
+    return`<div class="chartcard" style="${me?'border-color:var(--k-me)':''}">
+      <div style="display:flex;align-items:baseline;gap:8px"><h3 style="font:700 20px/1 var(--display);text-transform:uppercase">${esc(a.name)}</h3>
+        ${me?'<span class="tag2" style="color:var(--k-me)">tu</span>':''}<span class="sp" style="margin-left:auto;font-size:11px;color:var(--k-muted)">${a.seasons} stagioni · ${a.tot} pt/anno dai titolari</span></div>
+      <div style="display:flex;gap:2px;margin:10px 0 6px;height:10px;border-radius:5px;overflow:hidden">
+        ${ALLP.map(p=>a.share[p]>0.5?`<i style="width:${a.share[p]}%;background:${POSC[p]}" title="${p} ${n0(a.share[p])}%"></i>`:'').join('')}</div>
+      <div style="font-size:11px;color:var(--k-muted);margin-bottom:8px">${ALLP.filter(p=>a.share[p]>=6).map(p=>`${p} ${n0(a.share[p])}%`).join(' · ')}</div>
+      <div class="mrow"><span class="l">QB diversi / anno</span><span class="t"><i style="width:${Math.min(100,a.usedQB/4*100)}%"></i></span><span class="v">${n1(a.usedQB)}</span></div>
+      <div class="mrow"><span class="l">D/ST diverse / anno</span><span class="t"><i style="width:${Math.min(100,a.usedDST/6*100)}%"></i></span><span class="v">${n1(a.usedDST)}</span></div>
+      <div class="mrow"><span class="l">RB diversi / anno</span><span class="t"><i style="width:${Math.min(100,a.usedRB/12*100)}%"></i></span><span class="v">${n1(a.usedRB)}</span></div>
+      <div style="margin-top:10px;font-size:11.5px"><b style="font:600 10.5px var(--mono);letter-spacing:.06em;color:var(--k-muted)">DRAFT 2026 · PRIME 8</b><div style="margin-top:4px;display:flex;gap:3px;flex-wrap:wrap">${seq}</div>
+        <div style="color:var(--k-muted);margin-top:5px">${d26.slice(0,4).map(x=>esc(x.player.name)).join(' · ')}</div></div>
+      <div style="margin-top:10px;font-size:11.5px"><b style="font:600 10.5px var(--mono);letter-spacing:.06em;color:var(--k-muted)">I SUOI FEDELISSIMI</b>
+        <div style="color:var(--k-muted);margin-top:4px">${a.top.slice(0,6).map(t=>`${esc(t[0])} <span style="color:#5C6874">${t[2]}×</span>`).join(' · ')}</div></div>
+      ${(()=>{const h=draftHist(eid),dn=dnaFor(eid);
+        return`<div style="margin-top:10px;font-size:11.5px"><b style="font:600 10.5px var(--mono);letter-spacing:.06em;color:var(--k-muted)">SETTE DRAFT VERE (2019-2025)</b>
+          <div class="mrow" style="grid-template-columns:118px 1fr 58px"><span class="l" title="Posti di anticipo rispetto all'ordine di mercato, dentro la stessa draft">Anticipo sul mercato</span><span class="t"><i style="width:${Math.min(100,Math.max(0,50+(h.reach||0)*10))}%"></i></span><span class="v">${h.reach==null?'—':(h.reach>0?'+':'')+n1(h.reach)}</span></div>
+          <div class="mrow" style="grid-template-columns:118px 1fr 58px"><span class="l">Primo QB, giro</span><span class="t"><i style="width:${Math.min(100,(h.firstQB||0)/15*100)}%"></i></span><span class="v">${h.firstQB?n1(h.firstQB):'—'}</span></div>
+          <div style="color:var(--k-muted);margin-top:4px">Primi 3 giri: ${Object.entries(h.mix).sort((a,b)=>b[1]-a[1]).map(([p,c])=>`${p} ${c}`).join(' · ')}</div>
+          ${h.loyal.length?`<div style="color:var(--k-muted);margin-top:3px">Ridraftati più volte: ${h.loyal.map(l=>`${esc(l[0])} <span style="color:#5C6874">${l[1]}×</span>`).join(' · ')}</div>`:''}
+          ${dn.length?`<div style="margin-top:8px"><b style="font:600 10.5px var(--mono);letter-spacing:.06em;color:var(--k-muted)">TRATTI CALCOLATI SU 7 DRAFT E 7 STAGIONI</b>
+            ${dn.map(t=>`<div class="mrow" style="grid-template-columns:1fr 60px 42px"><span class="l" title="${esc(t.meta.hi||'')}">${esc(t.meta.label)}</span><span class="v" style="color:${t.z>0?'var(--live)':'var(--offline)'}">${t.z>0?'+':''}${n1(t.z)} z</span><span class="v" style="color:var(--k-muted)">${t.raw!=null?n1(t.raw):''}</span></div>`).join('')}</div>`:''}
+        </div>`})()}
+      <div class="verdict2" style="margin-top:10px"><h4>Lettura</h4><ul>${rivalRead(a,d26).map(t=>`<li>${t}</li>`).join('')}</ul></div>
+    </div>`}).join('');
+  shareChart();
+  modelPanel();
+}
+function modelPanel(){
+  const rows=[1,2,4].map(eid=>({eid,m:mgrModel(eid)}));
+  const bt=backtest();
+  const pc=v=>Math.round(v/bt.n*100)+'%';
+  $('#mk-model').innerHTML=`<table class="antable" style="margin-bottom:10px"><thead><tr><th>Avversario</th><th class="num">Anticipa</th><th class="num">Imprevedibile</th><th class="num">1° QB</th><th class="num">Ridrafta i suoi</th><th>Ruoli preferiti nei primi 3 giri</th></tr></thead><tbody>`+
+    rows.map(r=>{
+      const pref=['RB','WR','QB','TE'].map(p=>({p,v:(r.m.posProb(1,p)+r.m.posProb(2,p)+r.m.posProb(3,p))/3})).sort((a,b)=>b.v-a.v).slice(0,2);
+      return`<tr><td><b>${esc(TBY.get(r.eid).name)}</b></td>
+        <td class="num" style="color:${r.m.reach>0.3?'var(--k-y)':'var(--k-muted)'}">${r.m.reach>0?'+':''}${n1(r.m.reach)} z</td>
+        <td class="num">${n1(r.m.erratic)}</td>
+        <td class="num">${r.m.firstQB?'giro '+n1(r.m.firstQB):'—'}</td>
+        <td class="num">${r.m.repeatConsec!=null?n0(r.m.repeatConsec)+'%':'—'}</td>
+        <td style="color:var(--k-muted)">${pref.map(x=>`${x.p} ${Math.round(x.v*100)}%`).join(' · ')}</td></tr>`}).join('')+
+    `</tbody></table>
+    <p class="cn"><b>Quanto ci prende.</b> Rigiocando la draft 2026 vera, il modello indovina la pick esatta dell'avversario nel <b>${pc(bt.hit1)}</b> dei casi e la mette fra le prime tre nel <b>${pc(bt.hit3)}</b>; il solo ordine di mercato si ferma a ${pc(bt.base1)} e ${pc(bt.base3)} su ${bt.n} pick. Non è una sfera di cristallo: serve a sapere <em>chi rischia di sparire</em> prima del tuo turno.</p>`;
+}
+function shareChart(){
+  const W=560,H=260,L=96,R2=20,T=16,B=30,POSS=['QB','RB','WR','TE'];
+  const rows=RIVALS.map(eid=>({eid,a:histAgg(eid)})).filter(r=>r.a);
+  const L0=leagueAvg();
+  const max=Math.max(3,...rows.flatMap(r=>POSS.map(p=>Math.abs((r.a.share[p]||0)-(L0.share[p]||0)))));
+  const bh=(H-T-B)/rows.length,mid=L+(W-L-R2)/2,half=(W-L-R2)/2;
+  let g=`<line x1="${mid}" y1="${T-6}" x2="${mid}" y2="${H-B+2}" stroke="#2A3542" stroke-width="1"/>`;
+  rows.forEach((r,i)=>{
+    const y0=T+i*bh;
+    g+=`<text x="${L-10}" y="${y0+bh/2+4}" fill="#B8C3CE" font-size="11" text-anchor="end">${esc(r.a.name)}</text>`;
+    POSS.forEach((p,j)=>{
+      const d0=(r.a.share[p]||0)-(L0.share[p]||0),w=Math.abs(d0)/max*half;
+      const h=(bh-10)/POSS.length,y=y0+5+j*h;
+      g+=`<rect x="${(d0>=0?mid:mid-w).toFixed(1)}" y="${y.toFixed(1)}" width="${Math.max(1.5,w).toFixed(1)}" height="${(h-2).toFixed(1)}" rx="2" fill="${POSC[p]}"/>`;
+      g+=`<text x="${(d0>=0?mid+w+4:mid-w-4).toFixed(1)}" y="${(y+h/2+1).toFixed(1)}" fill="#8593A2" font-size="8.5" text-anchor="${d0>=0?'start':'end'}">${p} ${d0>=0?'+':''}${n1(d0)}</text>`;
+    });
+  });
+  g+=`<text x="${mid}" y="${H-8}" fill="#7C8996" font-size="9" text-anchor="middle">scostamento dalla media della lega, in punti percentuali</text>`;
+  $('#ch-share').innerHTML=svgEl(W,H,g);
+  $('#ch-share-lg').innerHTML=POSS.map(p=>`<span><i style="background:${POSC[p]}"></i>${p}</span>`).join('')+'<span>destra: sopra la media · sinistra: sotto</span>';
+}
+/* --- mock draft: il modello di ogni avversario --- */
+const LGROUND=(()=>{                      // distribuzione dei ruoli per giro, su tutte le draft
+  const o={},tot={};
+  Object.values(TOP.drafts).forEach(rows=>rows.forEach(r=>{
+    const rd=Math.ceil(r.p/N);(o[rd]=o[rd]||{})[r.pos]=((o[rd]||{})[r.pos]||0)+1;tot[rd]=(tot[rd]||0)+1}));
+  return{o,tot}
+})();
+const MODELS={};
+function mgrModel(eid){
+  if(MODELS[eid])return MODELS[eid];
+  const k=MKEY[eid],dna=(TOP.dna.managers[k]||{}).traits||{},rows=TOP.drafts[k]||[];
+  const z=id=>dna[id]&&dna[id].z!=null?dna[id].z:0, raw=id=>dna[id]?dna[id].raw:null;
+  const byRound={},tot={};
+  rows.forEach(r=>{const rd=Math.ceil(r.p/N);(byRound[rd]=byRound[rd]||{})[r.pos]=((byRound[rd]||{})[r.pos]||0)+1;tot[rd]=(tot[rd]||0)+1});
+  const posProb=(rd,pos)=>{                 // frequenza sua, ammorbidita con quella di lega
+    const m=(byRound[rd]||{})[pos]||0,mt=tot[rd]||0;
+    const l=(LGROUND.o[rd]||{})[pos]||0,lt=LGROUND.tot[rd]||1;
+    return (m+2*(l/lt))/(mt+2);
+  };
+  const firstOf=pos=>{const y={};rows.forEach(r=>{if(r.pos===pos&&(!y[r.y]||r.p<y[r.y]))y[r.y]=r.p});
+    const v=Object.values(y);return v.length?v.reduce((a,b)=>a+b,0)/v.length/N:null};
+  const own26=new Set(PICKS26.filter(p=>p[1]===eid).map(p=>p[2]));   // i suoi della draft 2026
+  const withAr=rows.filter(r=>r.ar!=null);
+  const reachRaw=withAr.length?withAr.reduce((s,r)=>s+(r.ar-r.p),0)/withAr.length:0;
+  const m={key:k,posProb,firstQB:firstOf('QB'),firstTE:firstOf('TE'),firstRB:firstOf('RB'),own26,
+    reach:z('reach')+z('reachEarly')*0.5, reachRaw,
+    erratic:2.5+Math.max(0,z('erraticity'))*2.5,
+    rookie:z('rookieRatePick'), vet:z('vetRatePick'),
+    loyalBoost:(raw('repeatConsec')||25)/25, repeatConsec:raw('repeatConsec'),
+    nPicks:rows.length};
+  return MODELS[eid]=m;
+}
+/* la scelta di un avversario: mercato, spostato dalle sue abitudini */
+function rivalPick(eid,left,ros,round){
+  const M=mgrModel(eid),cand=left.slice(0,20);
+  const c=pos=>ros.filter(p=>p.pos===pos).length;
+  const scored=cand.map(p=>{
+    const limit=(p.pos==='K'||p.pos==='DST')&&(round<12||c(p.pos)>=1)?60:0;   // nessuno prende K/DEF presto
+    const dup=(p.pos==='QB'&&c('QB')>=2)||(p.pos==='TE'&&c('TE')>=2)?45:0;
+    const pos10=M.posProb(round,p.pos)*22;                                    // quanto ama quel ruolo in quel giro
+    const loyal=M.own26.has(p.id)?M.loyalBoost*6:0;                           // ridrafta i suoi
+    const age=(p.exp===0?M.rookie*4:0)+(p.exp>=7?M.vet*4:0);
+    const struct=(p.pos==='QB'&&M.firstQB?(round<M.firstQB-1.5?14:0):0)+(p.pos==='TE'&&M.firstTE&&round<M.firstTE-2?10:0);
+    return{p,k:p.mkt-M.reach*4-pos10-loyal-age+limit+dup+struct+gauss()*M.erratic}
+  });
+  return scored.sort((a,b)=>a.k-b.k)[0].p;
+}
+/* verifica: il modello rigioca la draft 2026 e si conta quante pick indovina */
+function backtest(){
+  const byId=new Map(PLAYERS.map(p=>[p.id,p]));
+  let left=market.slice();
+  const ros={};[1,2,3,4].forEach(t=>ros[t]=[]);
+  let n=0,hit1=0,hit3=0,base1=0,base3=0;
+  PICKS26.forEach(([ov,tid,pid])=>{
+    const real=byId.get(pid);const round=Math.ceil(ov/N);
+    if(real&&tid!==MY){
+      n++;
+      const pred=[];
+      for(let i=0;i<9;i++)pred.push(rivalPick(tid,left,ros[tid],round));   // 9 estrazioni: il modello è stocastico
+      const counts={};pred.forEach(p=>counts[p.id]=(counts[p.id]||0)+1);
+      const ranked=Object.entries(counts).sort((a,b)=>b[1]-a[1]).map(e=>+e[0]);
+      if(ranked[0]===pid)hit1++;
+      if(ranked.slice(0,3).includes(pid))hit3++;
+      const bl=left.slice(0,3).map(p=>p.id);                                // riferimento: solo ordine di mercato
+      if(bl[0]===pid)base1++;
+      if(bl.includes(pid))base3++;
+    }
+    if(real){ros[tid].push(real);left=left.filter(p=>p.id!==pid)}
+  });
+  return{n,hit1,hit3,base1,base3}
+}
+function simDraft(strategy,bias,forced){
+  let left=market.slice();
+  const rosters={};[1,2,3,4].forEach(t=>rosters[t]=[]);
+  for(let ov=1;ov<=TOTAL;ov++){
+    const tid=ORDER[ov-1].teamId,round=ORDER[ov-1].round,ros=rosters[tid];
+    const pick=tid===MY?((forced&&ov===1)?forced:myChoice(strategy,left,ros,round)):rivalPick(tid,left,ros,round);
+    ros.push(pick);left=left.filter(x=>x!==pick);
+  }
+  return rosters[MY];
+}
+function myChoice(st,left,ros,round){
+  const c=pos=>ros.filter(p=>p.pos===pos).length;
+  const ok=p=>{
+    if((p.pos==='K'||p.pos==='DST')&&(round<14||c(p.pos)>=1))return false;
+    if(p.pos==='QB'&&c('QB')>=1)return false;
+    if(p.pos==='TE'&&c('TE')>=1&&round<10)return false;
+    if(st==='zero'&&p.pos==='RB'&&round<=2)return false;
+    if(st==='hero'&&p.pos==='RB'&&c('RB')>=1&&round<=6)return false;
+    if(st==='lateqb'&&p.pos==='QB'&&round<6)return false;
+    return true};
+  /* garanzia di formazione legale: se i round rimasti bastano appena, riempi gli slot scoperti */
+  const need=[['QB',1],['RB',2],['WR',2],['TE',1],['DST',1],['K',1]].filter(([p,k])=>c(p)<k);
+  const missing=need.reduce((s,[p,k])=>s+(k-c(p)),0),roundsLeft=ROUNDS-round+1;
+  let cand;
+  if(missing>=roundsLeft)cand=left.filter(p=>need.some(([q])=>q===p.pos));
+  else cand=left.filter(ok);
+  if(!cand.length)cand=left;
+  const w=p=>st==='balanced'?p.vorp*needW(p.pos,ros,round):p.vorp*(needW(p.pos,ros,round)*0.5+0.5);
+  return cand.reduce((a,b)=>!a||w(b)>w(a)?b:a,null)||left[0];
+}
+function lineupPoints(ros){
+  const used=new Set(),pick=(el)=>{const p=ros.find(x=>!used.has(x.id)&&el.includes(x.pos));if(p)used.add(p.id);return p?p.proj:0};
+  const s=[['QB'],['RB'],['RB'],['RB','WR'],['WR'],['WR'],['TE'],['DST'],['K']];
+  const sorted=[...ros].sort((a,b)=>b.proj-a.proj);
+  let tot=0;s.forEach(el=>{const p=sorted.find(x=>!used.has(x.id)&&el.includes(x.pos));if(p){used.add(p.id);tot+=p.proj}});
+  return tot;
+}
+function runSims(st,n,forced){
+  const bias=null;
+  const pts=[],firsts={},seconds={};
+  for(let i=0;i<n;i++){
+    const ros=simDraft(st,bias,forced);pts.push(lineupPoints(ros));
+    const f=ros[0];if(f)firsts[f.name]=(firsts[f.name]||0)+1;
+    const s2=ros[1];if(s2)seconds[s2.name]=(seconds[s2.name]||0)+1;
+  }
+  pts.sort((a,b)=>a-b);
+  const mean=pts.reduce((a,b)=>a+b,0)/pts.length;
+  const top=o=>Object.entries(o).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  return{mean,p10:pts[Math.floor(pts.length*0.1)],p90:pts[Math.floor(pts.length*0.9)],
+    firsts:top(firsts),seconds:top(seconds),n}
+}
+function renderSims(list,head){
+  const lo=Math.min(...list.map(r=>r.p10)),hi=Math.max(...list.map(r=>r.p90)),span=Math.max(1,hi-lo);
+  const spread=(Math.max(...list.map(r=>r.mean))-Math.min(...list.map(r=>r.mean)))/Math.max(...list.map(r=>r.mean))*100;
+  $('#mk-out').innerHTML=`<table class="antable"><thead><tr><th>${head||'Strategia'}</th><th class="num">Titolari proiettati</th><th>Distribuzione (p10 – p90)</th><th>Scelte iniziali tipiche</th></tr></thead><tbody>`+
+    list.map(r=>`<tr><td><b>${r.label}</b></td><td class="num">${n0(r.mean)}</td>
+      <td><span class="mini" style="width:130px;position:relative"><i style="position:absolute;left:${((r.p10-lo)/span*100).toFixed(1)}%;width:${Math.max(3,(r.p90-r.p10)/span*100).toFixed(1)}%;background:var(--k-y)"></i></span> <span style="color:var(--k-muted)">${n0(r.p10)}–${n0(r.p90)}</span></td>
+      <td style="color:var(--k-muted)">${r.firsts.map(f=>`${esc(f[0])} <span style="color:#5C6874">${Math.round(f[1]/r.n*100)}%</span>`).join(' · ')}</td></tr>`).join('')+
+    `</tbody></table><p class="cn" style="margin-top:8px">Proiezione della formazione titolare (9 slot) sommando le proiezioni ESPN, su ${list[0].n} draft simulate per riga. ${spread<1.5?`<b>Le differenze sono minime (${spread.toFixed(1)}%)</b>: in una lega da 4 la strategia conta poco, conta non sbagliare i primi due turni.`:`Divario fra la migliore e la peggiore: ${spread.toFixed(1)}%.`} Le proiezioni stagionali hanno comunque un errore molto più grande di questi scarti.</p>`;
+}
+const STRATS={vorp:'Miglior VORP',zero:'Zero-RB',hero:'Hero-RB',lateqb:'QB tardi',balanced:'Bilanciata'};
+
+/* ================= CALENDARIO ================= */
+function sosFor(team,pos,win){
+  const s=SCHED[team];if(!s)return null;
+  const wks=WEEKS[win],vals=[];
+  wks.forEach(w=>{const o=s.opp[w];if(!o)return;const ab=o.replace('@','');const f=FPA[ab];if(f&&f[pos])vals.push(f[pos])});
+  return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
+}
+function sosColor(v){
+  if(v==null)return'#6C7987';
+  const d=Math.max(-0.35,Math.min(0.35,v-1))/0.35;
+  return d>=0?`rgba(47,210,122,${0.25+d*0.55})`:`rgba(240,82,74,${0.25+(-d)*0.55})`;
+}
+function renderSchedule(){
+  const pos=P2.sdPos,win=P2.sdWin;
+  const teams=Object.keys(SCHED).sort();
+  const rows=teams.map(t=>({t,sos:sosFor(t,pos,win),all:sosFor(t,pos,'all'),bye:SCHED[t].bye,
+    best:byPos[pos].filter(p=>p.nfl===t).slice(0,2)})).filter(r=>r.sos!=null).sort((a,b)=>b.sos-a.sos);
+  $('#sd-table').innerHTML=`<thead><tr><th>Team</th><th class="num">Bye</th><th class="num">Finestra</th><th class="num">Stagione</th><th>Giocatori ${pos}</th></tr></thead><tbody>`+
+    rows.map(r=>`<tr><td><b>${r.t}</b></td><td class="num">${r.bye||'—'}</td>
+      <td class="num" style="background:${sosColor(r.sos)};border-radius:4px">${f2(r.sos)}</td>
+      <td class="num" style="color:var(--k-muted)">${f2(r.all)}</td>
+      <td style="color:var(--k-muted)">${r.best.map(p=>esc(p.name)).join(', ')||'—'}</td></tr>`).join('')+'</tbody>';
+  const byWeek={};Object.entries(SCHED).forEach(([t,s])=>{if(s.bye)(byWeek[s.bye]=byWeek[s.bye]||[]).push(t)});
+  const maxB=Math.max(...Object.values(byWeek).map(a=>a.length),1);
+  $('#sd-bye').innerHTML=Object.keys(byWeek).sort((a,b)=>a-b).map(w=>{
+    const tt=byWeek[w],stars=PLAYERS.filter(p=>tt.includes(p.nfl)).sort((a,b)=>b.proj-a.proj).slice(0,3);
+    return`<div class="mrow" style="grid-template-columns:70px 1fr 200px"><span class="l">Settimana ${w}</span>
+      <span class="t"><i style="width:${tt.length/maxB*100}%;background:var(--k-y)"></i></span>
+      <span style="font-size:11px;color:var(--k-muted);text-align:right">${tt.length} team · ${stars.map(p=>esc(p.name.split(' ').slice(-1)[0])).join(', ')}</span></div>`}).join('');
+  const pl=PLAYERS.filter(p=>['QB','RB','WR','TE'].includes(p.pos)&&p.proj>0)
+    .map(p=>({p,s:sosFor(p.nfl,p.pos,'po')})).filter(x=>x.s!=null)
+    .sort((a,b)=>b.s-a.s||b.p.proj-a.p.proj).filter(x=>x.p.proj>=120).slice(0,25);
+  $('#sd-players').innerHTML=`<thead><tr><th>Giocatore</th><th>Pos</th><th class="num">Proj</th><th class="num">Bye</th><th class="num">SOS playoff</th></tr></thead><tbody>`+
+    pl.map(x=>`<tr><td>${esc(x.p.name)} <span style="color:var(--k-muted)">${x.p.nfl}</span></td><td><span class="pos pos-${x.p.pos}">${x.p.pos}</span></td>
+      <td class="num">${n0(x.p.proj)}</td><td class="num">${x.p.bye||'—'}</td>
+      <td class="num" style="background:${sosColor(x.s)};border-radius:4px">${f2(x.s)}</td></tr>`).join('')+'</tbody>';
+}
+
+/* ================= WAIVER ================= */
+const volOf=p=>(p.tgtpg26||0)*1.6+(p.carpg26||0);
+const growthOf=p=>(!p.g26||!p.g25||p.pos==='QB'||p.pos==='K'||p.pos==='DST')?0:
+  ((p.tgtpg26||0)+(p.carpg26||0))-(((p.tgt||0)+(p.car||0))/p.g25);
+const MEDV={},MEDP={};
+ALLP.forEach(pos=>{
+  const l=byPos[pos].slice(0,24);
+  const v=l.map(volOf).filter(x=>x>0).sort((a,b)=>a-b),pr=l.map(p=>p.proj).filter(x=>x>0).sort((a,b)=>a-b);
+  MEDV[pos]=v.length?v[Math.floor(v.length/2)]:1;MEDP[pos]=pr.length?pr[Math.floor(pr.length/2)]:1});
+/* punteggio normalizzato dentro il reparto: un QB e un WR restano confrontabili */
+function oppScore(p){
+  const vol=volOf(p)/Math.max(0.5,MEDV[p.pos]),proj=p.proj/Math.max(1,MEDP[p.pos]);
+  const snap=(p.snap26!=null?p.snap26:(p.snap||0))/100;
+  const g=Math.max(-3,Math.min(5,growthOf(p)));
+  return 34*vol+26*proj+14*snap+3.2*g+(p.g26?0:-8);
+}
+function renderWaiver(){
+  const list=PLAYERS.filter(p=>(P2.pos==='ALL'||p.pos===P2.pos)&&(!P2.fa||!p.own)&&p.proj>0)
+    .map(p=>({p,s:oppScore(p),g:growthOf(p)}));
+  const key={opp:x=>-x.s,trend:x=>-x.g,proj:x=>-x.p.proj,ppg26:x=>-(x.p.ppg26||0)}[P2.sort];
+  list.sort((a,b)=>key(a)-key(b));
+  $('#wv-info').textContent=`${PLAYERS.filter(p=>p.own).length} giocatori occupati · ${PLAYERS.filter(p=>!p.own).length} liberi nel pool analizzato`;
+  const max=Math.max(...list.map(x=>x.s),1);
+  $('#wv-table').innerHTML=`<thead><tr><th>Giocatore</th><th>Pos</th><th class="num">Opportunità</th><th class="num">Tgt/g '26</th><th class="num">Corse/g '26</th><th class="num">Snap '26</th><th class="num">Ppg '26</th><th class="num">Proj</th><th>Stato</th></tr></thead><tbody>`+
+    list.slice(0,60).map(x=>{const p=x.p;
+      return`<tr><td><b>${esc(p.name)}</b> <span style="color:var(--k-muted)">${p.nfl}${p.bye?' · bye '+p.bye:''}</span>${p.inj?` <span class="tag2 bad">${p.inj}</span>`:''}</td>
+      <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
+      <td class="num"><span class="mini"><i style="width:${Math.max(3,x.s/max*100)}%;background:${POSC[p.pos]}"></i></span>${n0(x.s)}</td>
+      <td class="num">${p.tgtpg26!=null?n1(p.tgtpg26):'—'}</td><td class="num">${p.carpg26!=null?n1(p.carpg26):'—'}</td>
+      <td class="num">${p.snap26!=null?n0(p.snap26)+'%':'—'}</td><td class="num">${p.ppg26!=null?n1(p.ppg26):'—'}</td>
+      <td class="num">${n0(p.proj)}</td>
+      <td>${p.own?`<span class="tag2 warn">${esc(TBY.get(p.own).name)}</span>`:`<span class="tag2 good">libero</span>`}${x.g>=2.5?'<span class="tag2 acc">volume in crescita</span>':x.g<=-2.5?'<span class="tag2 warn">volume in calo</span>':''}${p.pct!=null&&p.pct<40&&!p.own?'<span class="tag2">poco posseduto altrove</span>':''}</td></tr>`}).join('')+'</tbody>';
+  $('#wv-rosters').innerHTML=[1,2,3,4].map(t=>{
+    const pl=PLAYERS.filter(p=>p.own===t).sort((a,b)=>b.proj-a.proj);
+    const cnt=ALLP.map(pos=>`${pos} ${pl.filter(p=>p.pos===pos).length}`).join(' · ');
+    return`<div class="tm" style="margin-bottom:8px;${t===MY?'border-color:var(--k-me)':''}"><div class="th2"><b>${esc(TBY.get(t).name)}</b>${t===MY?'<small style="color:var(--k-me)">tu</small>':''}<span class="tot">${pl.length} giocatori</span></div>
+      <div style="font-size:11px;color:var(--k-muted);margin-bottom:6px">${cnt}</div>
+      ${pl.slice(0,8).map(p=>`<div class="un"><span class="p" style="background:${POSC[p.pos]}">${p.pos}</span><span class="n">${esc(p.name)}</span><span class="v">${n0(p.proj)}</span></div>`).join('')}</div>`}).join('');
+}
+
+/* ================= CONFRONTO ================= */
+const CA='#3CC7F5', CB='#F2D82E';
+const q=(arr,p)=>{if(!arr.length)return null;const a=[...arr].sort((x,y)=>x-y);const i=(a.length-1)*p;const lo=Math.floor(i),hi=Math.ceil(i);return lo===hi?a[lo]:a[lo]+(a[hi]-a[lo])*(i-lo)};
+const P3=()=>window.DWR3;
+const poolOf=pos=>P3().POOL.filter(p=>p.pos===pos).sort((a,b)=>b.proj-a.proj).slice(0,pos==='QB'||pos==='TE'?16:28);
+/* riferimenti del ruolo: floor (10°), media, ceiling (90°) fra i titolari tipici */
+function refOf(pos,key){
+  const vals=poolOf(pos).map(key).filter(v=>v!=null&&!isNaN(v));
+  if(!vals.length)return null;
+  return{lo:q(vals,0.1),mid:vals.reduce((a,b)=>a+b,0)/vals.length,hi:q(vals,0.9)};
+}
+/* distribuzione di una giornata tipo: tutte le partite dei titolari del ruolo */
+function gameRef(pos){
+  const all=[];
+  poolOf(pos).forEach(p=>{
+    [P3().adv(p,25),P3().adv(p,26)].forEach(a=>{if(a&&a.wk)a.wk.forEach(v=>{if(v!=null)all.push(v)})});
+  });
+  if(!all.length)return null;
+  return{lo:q(all,0.1),mid:all.reduce((a,b)=>a+b,0)/all.length,hi:q(all,0.9),n:all.length};
+}
+const gamesOf=p=>{
+  const out=[];
+  [[25,P3().adv(p,25)],[26,P3().adv(p,26)]].forEach(([y,a])=>{if(a&&a.wk)a.wk.forEach(v=>{if(v!=null)out.push({v,y})})});
+  return out;
+};
+function metrics(p){
+  const a=P3().adv(p,26)||{},a25=P3().adv(p,25)||{};
+  const pick=(k)=>a[k]!=null?a[k]:(a25[k]!=null?a25[k]:null);
+  const g=gamesOf(p).map(x=>x.v);
+  return{
+    proj:p.proj, ppg26:p.ppg26, ppg25:p.ppg25,
+    floor:q(g,0.15), ceil:q(g,0.85),
+    tsh:pick('targetShare')!=null?pick('targetShare')*100:null,
+    rush:pick('rushShare')!=null?pick('rushShare')*100:null,
+    snap:pick('snapPct')!=null?pick('snapPct')*100:(p.snap26!=null?p.snap26:null),
+    wopr:pick('wopr'), tgt:pick('tgtPerGame'), car:pick('carriesPerGame'),
+    ypc:pick('ydsPerCarry'), ypt:pick('ydsPerTgt'), epa:pick('epaPerGame'),
+    sep:pick('sep'), ryoe:pick('ryoePerAtt'), cpoe:pick('cpoe'),
+    sos:sosFor(p.nfl,p.pos,'all'), sos3:P3().sos3(p), age:p.age, adp:p.adp||null,
+    boom:g.length?g.filter(v=>v>=20).length/g.length*100:null,
+    bust:g.length?g.filter(v=>v<=8).length/g.length*100:null
+  };
+}
+const ROWS=[
+  ['Proiezione 2026','proj',p=>p.proj,' pt'],
+  ['Punti a gara 2026','ppg26',p=>p.ppg26,''],
+  ['Punti a gara 2025','ppg25',p=>p.ppg25,''],
+  ['Floor (15° perc. delle sue gare)','floor',null,''],
+  ['Ceiling (85° perc.)','ceil',null,''],
+  ['Target share','tsh',null,'%'],
+  ['Quota corse','rush',null,'%'],
+  ['Snap','snap',null,'%'],
+  ['WOPR','wopr',null,''],
+  ['Target a gara','tgt',null,''],
+  ['Corse a gara','car',null,''],
+  ['EPA a gara','epa',null,''],
+  ['Calendario prossime 3','sos3',null,'']
+];
+function bandsChart(A,B,mA,mB){
+  const pos=A.pos,rows=ROWS.filter(r=>mA[r[1]]!=null||mB[r[1]]!=null);
+  const W=560,L=150,R=76,T=12,rowH=27,H=T+rows.length*rowH+16;
+  let s='';
+  rows.forEach((r,i)=>{
+    const key=r[1],y=T+i*rowH+rowH/2;
+    const ref=key==='floor'||key==='ceil'?gameRef(pos):refOf(pos,p=>metrics(p)[key]);
+    const vals=[mA[key],mB[key],ref&&ref.lo,ref&&ref.hi].filter(v=>v!=null);
+    const lo=Math.min(...vals,0),hi=Math.max(...vals)*1.06||1;
+    const x=v=>L+(v-lo)/(hi-lo)*(W-L-R);
+    s+=`<text x="${L-10}" y="${y+3.5}" fill="#8593A2" font-size="10.5" text-anchor="end">${r[0]}</text>`;
+    if(ref){
+      s+=`<rect x="${x(ref.lo).toFixed(1)}" y="${y-7}" width="${Math.max(2,x(ref.hi)-x(ref.lo)).toFixed(1)}" height="14" rx="7" fill="#1D2734"><title>reparto ${pos}: da ${n1(ref.lo)} a ${n1(ref.hi)}, media ${n1(ref.mid)}</title></rect>`;
+      s+=`<line x1="${x(ref.mid).toFixed(1)}" y1="${y-9}" x2="${x(ref.mid).toFixed(1)}" y2="${y+9}" stroke="#66737F" stroke-width="1.5"/>`;
+    }
+    [[mA[key],CA,A],[mB[key],CB,B]].forEach(([v,col,pl],k)=>{
+      if(v==null)return;
+      s+=`<circle cx="${x(v).toFixed(1)}" cy="${(y+(k?4:-4)).toFixed(1)}" r="5" fill="${col}"><title>${esc(pl.name)}: ${n1(v)}${r[3]}</title></circle>`;
+    });
+    const va=mA[key],vb=mB[key];
+    s+=`<text x="${W-R+8}" y="${y-1}" fill="${CA}" font-size="10" font-weight="600">${va==null?'—':n1(va)}</text>`;
+    s+=`<text x="${W-R+8}" y="${y+10}" fill="${CB}" font-size="10" font-weight="600">${vb==null?'—':n1(vb)}</text>`;
+  });
+  $('#cmp-bands').innerHTML=svgEl(W,H,s);
+  $('#cmp-lg').innerHTML=`<span><i style="background:${CA};width:9px;height:9px;border-radius:50%"></i>${esc(A.name)}</span>
+    <span><i style="background:${CB};width:9px;height:9px;border-radius:50%"></i>${esc(B.name)}</span>
+    <span><i style="background:#1D2734"></i>banda del ruolo (floor-ceiling)</span><span><i style="background:#66737F;width:2px;height:12px"></i>media del ruolo</span>`;
+}
+function stripChart(A,B){
+  const ref=gameRef(A.pos);
+  const gA=gamesOf(A),gB=gamesOf(B);
+  const all=[...gA,...gB].map(x=>x.v);
+  if(!all.length){$('#cmp-strip').innerHTML='<p class="cn">Nessuna partita disponibile.</p>';return}
+  const W=560,H=190,L=118,R=20,T=24,B2=26;
+  const hi=Math.max(...all,ref?ref.hi:0)*1.06;
+  const x=v=>L+v/hi*(W-L-R);
+  let s='';
+  if(ref){
+    [['floor',ref.lo],['media',ref.mid],['ceiling',ref.hi]].forEach(([lab,v])=>{
+      s+=`<line x1="${x(v).toFixed(1)}" y1="${T-8}" x2="${x(v).toFixed(1)}" y2="${H-B2}" stroke="#39485A" stroke-dasharray="3 3"/>`;
+      s+=`<text x="${x(v).toFixed(1)}" y="${T-12}" fill="#7C8996" font-size="9" text-anchor="middle">${lab} ${n0(v)}</text>`;
+    });
+  }
+  [[A,gA,CA,0],[B,gB,CB,1]].forEach(([pl,g,col,k])=>{
+    const y=T+22+k*52;
+    s+=`<text x="${L-10}" y="${y+4}" fill="#B8C3CE" font-size="10.5" text-anchor="end" data-pid="${pl.id}">${esc(pl.name)}</text>`;
+    s+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="#1B2430"/>`;
+    g.forEach((x2,i)=>{
+      const jitter=((i%3)-1)*4.5;
+      s+=`<circle cx="${x(x2.v).toFixed(1)}" cy="${(y+jitter).toFixed(1)}" r="3.6" fill="${col}" opacity="${x2.y===26?1:.55}"><title>${esc(pl.name)} · ${x2.y===26?'2026':'2025'}: ${n1(x2.v)} punti</title></circle>`;
+    });
+    const med=q(g.map(v=>v.v),0.5);
+    if(med!=null)s+=`<line x1="${x(med).toFixed(1)}" y1="${y-13}" x2="${x(med).toFixed(1)}" y2="${y+13}" stroke="${col}" stroke-width="2.5"/>`;
+    const bust=g.filter(v=>v.v<=8).length,boom=g.filter(v=>v.v>=20).length;
+    s+=`<text x="${W-R}" y="${y-16}" fill="#7C8996" font-size="9" text-anchor="end">mediana ${med==null?'—':n1(med)} · ${boom} gare da 20+ · ${bust} sotto 8</text>`;
+  });
+  for(let i=0;i<=4;i++){const v=hi*i/4;s+=`<text x="${x(v).toFixed(1)}" y="${H-8}" fill="#7C8996" font-size="9" text-anchor="middle">${n0(v)}</text>`}
+  $('#cmp-strip').innerHTML=svgEl(W,H,s);
+  $('#cmp-strip-lg').innerHTML=`<span>pallino pieno: 2026 · trasparente: 2025</span><span><i style="background:${CA};width:2px;height:12px"></i>mediana personale</span>`;
+}
+function schedChart(A,B){
+  const W=560,H=150,L=44,R=14,T=16,B2=28,wks=[];
+  for(let w=P3().WEEK;w<P3().WEEK+6;w++)wks.push(w);
+  const bw=(W-L-R)/wks.length;
+  let s='';
+  [0.8,1,1.2].forEach(v=>{const y=H-B2-(v-0.7)/0.6*(H-B2-T);s+=`<line x1="${L}" y1="${y.toFixed(1)}" x2="${W-R}" y2="${y.toFixed(1)}" stroke="${v===1?'#3A4756':'#1E2833'}"/><text x="${L-6}" y="${(y+3).toFixed(1)}" fill="#7C8996" font-size="9" text-anchor="end">${v.toFixed(1)}</text>`});
+  wks.forEach((w,i)=>{
+    s+=`<text x="${(L+i*bw+bw/2).toFixed(1)}" y="${H-B2+14}" fill="#7C8996" font-size="9" text-anchor="middle">S${w}</text>`;
+    [[A,CA,0],[B,CB,1]].forEach(([pl,col,k])=>{
+      const m=P3().matchup(pl,w),bye=pl.bye===w;
+      const cx=L+i*bw+bw*(0.28+k*0.44);
+      if(bye){s+=`<text x="${cx.toFixed(1)}" y="${(H-B2-6).toFixed(1)}" fill="${col}" font-size="8.5" text-anchor="middle" opacity=".85">bye</text>`;return}
+      if(!m)return;
+      const v=Math.max(0.7,Math.min(1.3,m.f)),y=H-B2-(v-0.7)/0.6*(H-B2-T);
+      const base=H-B2-(1-0.7)/0.6*(H-B2-T);
+      s+=`<rect x="${(cx-7).toFixed(1)}" y="${Math.min(y,base).toFixed(1)}" width="14" height="${Math.max(2,Math.abs(base-y)).toFixed(1)}" rx="3" fill="${col}" opacity=".9"><title>${esc(pl.name)} S${w} contro ${esc(m.opp)}: ${m.f.toFixed(2)}</title></rect>`;
+      s+=`<text x="${cx.toFixed(1)}" y="${(Math.min(y,base)-4).toFixed(1)}" fill="#7C8996" font-size="8" text-anchor="middle">${esc(m.opp.replace('@',''))}</text>`;
+    });
+  });
+  $('#cmp-sched').innerHTML=svgEl(W,H,s);
+}
+function renderCompare(){
+  const P=P3();if(!P){setTimeout(renderCompare,0);return}   // i dati di stagione arrivano da uno script più avanti
+  const dl=$('#cmp-list');
+  if(!dl.options.length)dl.innerHTML=P.POOL.slice().sort((a,b)=>b.proj-a.proj).map(p=>`<option value="${esc(p.name)}">`).join('');
+  const find=v=>P.POOL.find(p=>p.name.toLowerCase()===(v||'').toLowerCase())||null;
+  const A=find(P2.a)||P.POOL.filter(p=>p.own===MY).sort((a,b)=>b.proj-a.proj)[0]||P.POOL[0];
+  const B=find(P2.b)||P.POOL.filter(p=>p.pos===A.pos&&p.id!==A.id).sort((a,b)=>b.proj-a.proj)[0];
+  $('#cmp-a').value=$('#cmp-a').value||A.name;$('#cmp-b').value=$('#cmp-b').value||B.name;
+  const mA=metrics(A),mB=metrics(B);
+  const card=(p,m,col)=>{
+    const T=P.tm(p),ij=P.injOf(p);
+    return`<div class="sc" style="border-top-color:${col}"><h4>${esc(p.name)}</h4>
+      <div class="kv"><span>ruolo e squadra</span><b>${p.pos} · ${p.nfl}${T?` · ${T.oRank}° attacco`:''}</b></div>
+      <div class="kv"><span>proiezione · a gara</span><b>${n0(p.proj)} · ${n1(p.proj/17)}</b></div>
+      <div class="kv"><span>floor · ceiling</span><b>${m.floor==null?'—':n1(m.floor)} · ${m.ceil==null?'—':n1(m.ceil)}</b></div>
+      <div class="kv"><span>gare da 20+ / sotto 8</span><b>${m.boom==null?'—':n0(m.boom)+'% / '+n0(m.bust)+'%'}</b></div>
+      <div class="verd">${p.inj||(ij&&ij.s)?`Stato fisico: ${esc(p.inj||ij.s)}${ij&&ij.i?' ('+esc(ij.i)+')':''}.`:`${p.age?p.age+' anni':''}${p.bye?' · bye '+p.bye:''}${p.own?' · in rosa a '+esc(TBY.get(p.own).name):' · libero'}`}</div></div>`;
+  };
+  $('#cmp-cards').innerHTML=card(A,mA,CA)+card(B,mB,CB);
+  bandsChart(A,B,mA,mB);stripChart(A,B);schedChart(A,B);
+
+  const rowsT=ROWS.concat([['Separazione','sep',null,''],['RYOE per portata','ryoe',null,''],['Età','age',null,''],['ADP','adp',null,'']]);
+  $('#cmp-table').innerHTML=`<thead><tr><th>Metrica</th><th class="num" style="color:${CA}">${esc(A.name.split(' ').slice(-1)[0])}</th><th class="num" style="color:${CB}">${esc(B.name.split(' ').slice(-1)[0])}</th><th class="num">Ruolo (floor · media · ceiling)</th></tr></thead><tbody>`+
+    rowsT.filter(r=>mA[r[1]]!=null||mB[r[1]]!=null).map(r=>{
+      const k=r[1],va=mA[k],vb=mB[k];
+      const low=['age','adp'].includes(k);
+      const best=va==null||vb==null?0:(low?(va<vb?-1:1):(va>vb?-1:1));
+      const ref=k==='floor'||k==='ceil'?gameRef(A.pos):refOf(A.pos,p=>metrics(p)[k]);
+      return`<tr><td>${r[0]}</td>
+        <td class="num" style="${best===-1?'color:var(--live);font-weight:700':''}">${va==null?'—':n1(va)+r[3]}</td>
+        <td class="num" style="${best===1?'color:var(--live);font-weight:700':''}">${vb==null?'—':n1(vb)+r[3]}</td>
+        <td class="num" style="color:var(--k-muted)">${ref?`${n1(ref.lo)} · ${n1(ref.mid)} · ${n1(ref.hi)}`:'—'}</td></tr>`}).join('')+'</tbody>';
+
+  const v=[];
+  if(A.pos!==B.pos)v.push(`Reparti diversi (${A.pos} contro ${B.pos}): i punti grezzi non bastano, guarda dove ognuno sta dentro la <em>sua</em> banda.`);
+  const dp=A.proj-B.proj;
+  v.push(`La proiezione dà <b>${esc(dp>0?A.name:B.name)}</b> avanti di ${n0(Math.abs(dp))} punti stagionali (${n1(Math.abs(dp)/17)} a giornata).`);
+  if(mA.floor!=null&&mB.floor!=null){
+    const hiFloor=mA.floor>mB.floor?A:B;
+    v.push(`Il pavimento più alto è di <b>${esc(hiFloor.name)}</b> (${n1(Math.max(mA.floor,mB.floor))} contro ${n1(Math.min(mA.floor,mB.floor))}): è quello che rischi di meno nelle settimane storte.`);
+  }
+  if(mA.ceil!=null&&mB.ceil!=null&&Math.abs(mA.ceil-mB.ceil)>3){
+    const hiC=mA.ceil>mB.ceil?A:B;
+    v.push(`Il tetto più alto è di <b>${esc(hiC.name)}</b> (${n1(Math.max(mA.ceil,mB.ceil))}): serve quando parti sfavorito e ti serve la giornata grossa.`);
+  }
+  const volA=(mA.tsh||0)+(mA.rush||0),volB=(mB.tsh||0)+(mB.rush||0);
+  if(Math.abs(volA-volB)>6)v.push(`Volume più solido per <b>${esc(volA>volB?A.name:B.name)}</b>: la quota del reparto è l'indicatore che si ripete di più da una stagione all'altra.`);
+  if(mA.sos3!=null&&mB.sos3!=null&&Math.abs(mA.sos3-mB.sos3)>0.08)v.push(`Calendario più morbido nelle prossime tre per <b>${esc(mA.sos3>mB.sos3?A.name:B.name)}</b> (${f2(Math.max(mA.sos3,mB.sos3))} contro ${f2(Math.min(mA.sos3,mB.sos3))}).`);
+  if(A.bye&&A.bye===B.bye)v.push(`Stesso bye (settimana ${A.bye}): prenderli entrambi lascia un buco doppio.`);
+  [A,B].forEach(p=>{const ij=P.injOf(p);if(p.inj||(ij&&ij.s))v.push(`${esc(p.name)} è segnalato ${esc(p.inj||ij.s)}${ij&&ij.i?' ('+esc(ij.i)+')':''}: il floor conta poco se non scende in campo.`)});
+  $('#cmp-read').innerHTML=v.map(t=>`<li>${t}</li>`).join('');
+}
+
+/* ================= wiring ================= */
+function wvChips(){chips($('#wv-pos'),['ALL',...ALLP],P2.pos,c=>{P2.pos=c;wvChips();renderWaiver()})}
+wvChips();
+$('#wv-sort').onchange=e=>{P2.sort=e.target.value;renderWaiver()};
+$('#wv-fa').onchange=e=>{P2.fa=e.target.checked;renderWaiver()};
+$('#sd-pos').onchange=e=>{P2.sdPos=e.target.value;renderSchedule()};
+$('#sd-win').onchange=e=>{P2.sdWin=e.target.value;renderSchedule()};
+$('#cmp-a').onchange=e=>{P2.a=e.target.value;renderCompare()};
+$('#cmp-b').onchange=e=>{P2.b=e.target.value;renderCompare()};
+$('#cmp-swap').onclick=()=>{const a=$('#cmp-a').value;$('#cmp-a').value=$('#cmp-b').value;$('#cmp-b').value=a;P2.a=$('#cmp-a').value;P2.b=$('#cmp-b').value;renderCompare()};
+$('#mk-run').onclick=()=>{const st=$('#mk-strat').value,n=+$('#mk-n').value;
+  $('#mk-out').innerHTML='<p class="cn">Simulazione in corso…</p>';
+  setTimeout(()=>renderSims([{...runSims(st,n),label:STRATS[st]}]),20)};
+$('#mk-all').onclick=()=>{const n=Math.min(300,+$('#mk-n').value);
+  $('#mk-out').innerHTML='<p class="cn">Simulazione di tutte le strategie…</p>';
+  setTimeout(()=>renderSims(Object.keys(STRATS).map(st=>({...runSims(st,n),label:STRATS[st]}))
+    .sort((a,b)=>b.mean-a.mean)),20)};
+$('#mk-first').onclick=()=>{
+  const st=$('#mk-strat').value,n=Math.max(80,Math.min(200,+$('#mk-n').value));
+  const cands=market.slice(0,10).sort((a,b)=>b.vorp-a.vorp).slice(0,6);
+  $('#mk-out').innerHTML='<p class="cn">Provo le prime scelte possibili alla 1.01…</p>';
+  setTimeout(()=>renderSims(cands.map(p=>{const r=runSims(st,n,p);return{...r,label:`${p.name} (${p.pos})`,firsts:r.seconds}})
+    .sort((a,b)=>b.mean-a.mean),'Prima scelta alla 1.01'),20)};
+
+window.DWR_SCHED=SCHED;window.DWR_FPA=FPA;
+R.rivals=renderRivals;R.schedule=renderSchedule;R.waiver=renderWaiver;R.compare=renderCompare;
+const cur=(location.hash||'#plan').slice(1);
+if(R[cur]&&['rivals','schedule','waiver','compare'].includes(cur))window.DWR_VIEW(cur);
+})();
+</script>

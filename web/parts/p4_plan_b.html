@@ -1,0 +1,428 @@
+<section id="architettura" data-n="04" data-t="System architecture">
+  <h2>System architecture <small>04</small></h2>
+  <p>La stack proposta (Next.js, Postgres, Prisma, Redis) va bene, con un'eccezione: <b>Vercel non è adatto a processi long-running</b>. Il poller e le connessioni realtime restano aperte per ore, mentre le funzioni serverless hanno durata massima limitata. Per questo i servizi si dividono così:</p>
+  <div class="grid2">
+    <div class="card"><h4>apps/web · Vercel</h4><p>Next.js App Router: UI, auth, onboarding, API REST (import lega, snapshot draft, ticket realtime).</p></div>
+    <div class="card"><h4>apps/worker · Fly.io</h4><p>Sync Engine: un poller per draft attiva, con lease su Redis e scrittura transazionale su Postgres più outbox.</p></div>
+    <div class="card"><h4>apps/gateway · Fly.io</h4><p>Realtime gateway SSE (Fastify): legge Redis Streams, fa replay con <code>Last-Event-ID</code> e manda un heartbeat ogni 15 s.</p></div>
+    <div class="card"><h4>Dati</h4><p>PostgreSQL (Neon o Fly Postgres) come fonte di verità. Redis (Upstash o Fly) per lease, stream degli eventi e cache degli snapshot.</p></div>
+  </div>
+  <pre class="mermaid">
+flowchart LR
+  B[Browser - Draft Room] -- HTTPS --> W[Next.js on Vercel]
+  B -- SSE --> G[Realtime Gateway]
+  W --> P[(PostgreSQL)]
+  W -- signed ticket --> G
+  K[Sync Worker] -- poll 1-3s --> E[(ESPN lm-api-reads)]
+  K -- tx + outbox --> P
+  K -- XADD --> R[(Redis Streams + lease)]
+  G -- XREAD --> R
+  </pre>
+  <h3>Perché SSE e non WebSocket</h3>
+  <p>Il flusso va solo dal server al client, perché il client non invia pick. SSE offre riconnessione automatica nativa e <code>Last-Event-ID</code>, che corrisponde esattamente al <code>seq</code> degli eventi. Passa inoltre da proxy e CDN senza upgrade di protocollo. Se in futuro serviranno messaggi dal client (chat, watchlist condivisa), si aggiunge un WebSocket sul gateway senza toccare il resto. Esiste un'alternativa gestita (Ably o Pusher) che riduce l'operatività ma aggiunge costi e rende meno esplicito il replay per sequenza.</p>
+</section>
+
+<section id="schema" data-n="05" data-t="Database schema">
+  <h2>Database schema <small>05</small></h2>
+  <p>Postgres più Prisma. Le tabelle di Auth.js (Account, Session, VerificationToken) sono omesse. Gli ID ESPN restano stringhe: interi, GUID SWID e id negativi convivono.</p>
+  <script type="text/x-code" data-label="packages/db/prisma/schema.prisma">
+enum Provider        { ESPN SLEEPER YAHOO NFL MOCK }
+enum DraftType       { SNAKE AUCTION OFFLINE UNKNOWN }
+enum DraftStatus     { SCHEDULED IN_PROGRESS PAUSED COMPLETED CANCELLED UNKNOWN }
+enum PickStatus      { ACTIVE REVOKED }
+enum PickSource      { PROVIDER_POLL PROVIDER_RESYNC EXTENSION MOCK MANUAL }
+enum Position        { QB RB WR TE K DST DL LB DB OTHER }
+enum MemberRole      { OWNER MEMBER VIEWER }
+enum VerifiedVia     { PROVIDER_CREDENTIAL INVITE PUBLIC_LEAGUE }
+enum CredentialState { ACTIVE INVALID REVOKED }
+enum SyncHealth      { IDLE LIVE DEGRADED OFFLINE STOPPED }
+enum CircuitState    { CLOSED OPEN HALF_OPEN }
+
+model User {
+  id          String   @id @default(cuid())
+  email       String   @unique
+  name        String?
+  createdAt   DateTime @default(now())
+  credentials ProviderCredential[]
+  memberships LeagueMember[]
+}
+
+/// ESPN espn_s2 + SWID cifrati (envelope encryption, vedi §13)
+model ProviderCredential {
+  id               String          @id @default(cuid())
+  userId           String
+  user             User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider         Provider
+  externalUserId   String          // SWID "{GUID}"
+  ciphertext       Bytes
+  iv               Bytes
+  authTag          Bytes
+  wrappedDek       Bytes
+  kmsKeyId         String
+  state            CredentialState @default(ACTIVE)
+  lastValidatedAt  DateTime?
+  lastFailureAt    DateTime?
+  createdAt        DateTime        @default(now())
+  @@unique([userId, provider, externalUserId])
+}
+
+model League {
+  id               String   @id @default(cuid())
+  provider         Provider
+  externalLeagueId String
+  season           Int
+  name             String
+  isPublic         Boolean?
+  teamCount        Int
+  scoringProfile   String   // "PPR" | "HALF" | "STD" | "CUSTOM"
+  rosterSlots      Json     // normalizzato: [{slot:"RB",count:2},...]
+  scoringRules     Json     // normalizzato da scoringItems
+  rawSettings      Json
+  lastImportedAt   DateTime
+  teams            FantasyTeam[]
+  members          LeagueMember[]
+  drafts           Draft[]
+  @@unique([provider, externalLeagueId, season])
+}
+
+model LeagueMember {
+  id               String      @id @default(cuid())
+  leagueId         String
+  league           League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  userId           String?
+  user             User?       @relation(fields: [userId], references: [id])
+  externalMemberId String      // SWID
+  displayName      String
+  role             MemberRole  @default(MEMBER)
+  verifiedVia      VerifiedVia
+  teamId           String?
+  team             FantasyTeam? @relation(fields: [teamId], references: [id])
+  @@unique([leagueId, externalMemberId])
+  @@unique([leagueId, userId])
+}
+
+model FantasyTeam {
+  id             String   @id @default(cuid())
+  leagueId       String
+  league         League   @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  externalTeamId String
+  name           String
+  abbrev         String
+  logoUrl        String?
+  ownerIds       String[]
+  members        LeagueMember[]
+  picks          DraftPick[]
+  slots          DraftOrder[]
+  @@unique([leagueId, externalTeamId])
+}
+
+model Draft {
+  id            String      @id @default(cuid())
+  leagueId      String
+  league        League      @relation(fields: [leagueId], references: [id], onDelete: Cascade)
+  draftKey      String      @unique        // "espn:{leagueId}:{season}"
+  type          DraftType
+  status        DraftStatus
+  scheduledAt   DateTime?
+  startedAt     DateTime?
+  completedAt   DateTime?
+  rounds        Int
+  teamCount     Int
+  secondsPerPick Int?
+  eventSeq      BigInt      @default(0)   // sequenza monotona per draft
+  stateVersion  Int         @default(0)   // optimistic concurrency
+  order         DraftOrder[]
+  picks         DraftPick[]
+  events        SyncEvent[]
+  sync          SyncState?
+}
+
+model DraftOrder {
+  id             String   @id @default(cuid())
+  draftId        String
+  draft          Draft    @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  overallPick    Int
+  round          Int
+  pickInRound    Int
+  teamId         String
+  team           FantasyTeam @relation(fields: [teamId], references: [id])
+  originalTeamId String?  // pick scambiate
+  isKeeperSlot   Boolean  @default(false)
+  @@unique([draftId, overallPick])
+  @@index([draftId, teamId])
+}
+
+model DraftPick {
+  id                String     @id @default(cuid())
+  draftId           String
+  draft             Draft      @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  overallPick       Int
+  round             Int
+  pickInRound       Int
+  teamId            String
+  team              FantasyTeam @relation(fields: [teamId], references: [id])
+  playerId          String
+  player            Player     @relation(fields: [playerId], references: [id])
+  status            PickStatus @default(ACTIVE)
+  isKeeper          Boolean    @default(false)
+  isAutoPick        Boolean?
+  bidAmount         Int?
+  nominatingTeamId  String?
+  revision          Int        @default(1)
+  source            PickSource
+  detectedAt        DateTime   // quando l'abbiamo vista noi
+  providerTimestamp DateTime?  // ESPN non lo fornisce (VERIFIED)
+  rawPayload        Json
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  @@unique([draftId, overallPick])
+  @@index([draftId, teamId])
+  @@index([draftId, playerId])
+}
+// migration SQL: un giocatore una sola volta per draft
+// CREATE UNIQUE INDEX draftpick_player_active ON "DraftPick"("draftId","playerId") WHERE status = 'ACTIVE';
+
+model Player {
+  id            String   @id @default(cuid())
+  espnId        String?  @unique
+  sleeperId     String?  @unique
+  gsisId        String?  @unique
+  fantasyprosId String?
+  fullName      String
+  position      Position
+  nflTeam       String?
+  byeWeek       Int?
+  injuryStatus  String?
+  updatedAt     DateTime @updatedAt
+  stats         PlayerStats[]
+  picks         DraftPick[]
+  @@index([position])
+}
+
+model PlayerStats {
+  id              String   @id @default(cuid())
+  playerId        String
+  player          Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season          Int
+  source          String   // ESPN_PROJ | SLEEPER_PROJ | FFC_ADP | DP_ECR | NFLVERSE
+  scoringProfile  String   // PPR | HALF | STD | league:{id}
+  projectedPoints Float?
+  actualPoints    Float?
+  adp             Float?
+  adpStdDev       Float?
+  rank            Int?
+  auctionValue    Float?
+  statLine        Json?
+  fetchedAt       DateTime
+  @@unique([playerId, season, source, scoringProfile])
+  @@index([season, source, scoringProfile])
+}
+
+model SyncState {
+  draftId             String       @id
+  draft               Draft        @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  health              SyncHealth   @default(IDLE)
+  leaseOwner          String?
+  leaseUntil          DateTime?
+  lastAttemptAt       DateTime?
+  lastSuccessAt       DateTime?
+  lastChangeAt        DateTime?
+  consecutiveFailures Int          @default(0)
+  pollIntervalMs      Int          @default(3000)
+  lastEtag            String?
+  lastFingerprint     String?
+  lastKnownPick       Int          @default(0)
+  pendingRemovalFp    String?      // anti-flap per undo
+  circuit             CircuitState @default(CLOSED)
+  lastError           String?
+  updatedAt           DateTime     @updatedAt
+}
+
+/// Outbox + event log (fonte del replay)
+model SyncEvent {
+  id             String    @id              // uuid v7
+  draftId        String
+  draft          Draft     @relation(fields: [draftId], references: [id], onDelete: Cascade)
+  seq            BigInt
+  type           String
+  idempotencyKey String    @unique          // es. "pick:{draftId}:{overall}:{playerId}:r{revision}"
+  causationId    String?
+  payload        Json
+  occurredAt     DateTime
+  createdAt      DateTime  @default(now())
+  publishedAt    DateTime?
+  @@unique([draftId, seq])
+  @@index([publishedAt])
+}
+  </script>
+  <p>Indici chiave: <code>(draftId, overallPick)</code> unico per l'idempotenza delle pick, indice parziale unico <code>(draftId, playerId) WHERE ACTIVE</code> che impedisce a livello di database di vedere un giocatore draftato due volte, <code>(draftId, seq)</code> per il replay e <code>publishedAt</code> per il relay dell'outbox.</p>
+</section>
+
+<section id="backend" data-n="06" data-t="Backend architecture">
+  <h2>Backend architecture <small>06</small></h2>
+  <p>Architettura esagonale: il core di dominio non importa nulla di ESPN.</p>
+  <div class="flow"><span>FantasyProvider (port)</span><b>→</b><span>ESPNFantasyProvider (adapter)</span><b>→</b><span>normalize()</span><b>→</b><span>@dwr/core: diff · reducer · invariants</span><b>→</b><span>repositories (Prisma)</span><b>→</b><span>outbox relay</span></div>
+  <script type="text/x-code" data-label="packages/core/src/provider.ts">
+export type ProviderId = 'espn' | 'sleeper' | 'yahoo' | 'nfl' | 'mock';
+
+export interface LeagueRef { provider: ProviderId; leagueId: string; season: number }
+export interface ProviderAuth { kind: 'none' } | { kind: 'cookies'; espnS2: string; swid: string };
+
+export interface FantasyProvider {
+  readonly id: ProviderId;
+  readonly capabilities: {
+    liveDraft: 'poll' | 'push';           // ESPN: 'poll'
+    pickTimestamps: boolean;              // ESPN: false (VERIFIED)
+    clock: 'provider' | 'estimated';      // ESPN: 'estimated'
+    auction: boolean;
+  };
+  getLeague(ref: LeagueRef, auth: ProviderAuth): Promise<League>;
+  getTeams(ref: LeagueRef, auth: ProviderAuth): Promise<Team[]>;
+  getPlayers(ref: LeagueRef, auth: ProviderAuth): Promise<Player[]>;
+  getDraft(ref: LeagueRef, auth: ProviderAuth): Promise<Draft>;
+  getDraftPicks(ref: LeagueRef, auth: ProviderAuth): Promise<DraftPick[]>;
+  getRosters(ref: LeagueRef, auth: ProviderAuth): Promise<Roster[]>;
+  /** Hot path: una sola richiesta leggera, con ETag */
+  getDraftSnapshot(ref: LeagueRef, auth: ProviderAuth, opts?: { etag?: string; signal?: AbortSignal }):
+    Promise<{ notModified: true } | { notModified: false; etag?: string; snapshot: DraftSnapshot; raw: unknown }>;
+  validateAccess(ref: LeagueRef, auth: ProviderAuth): Promise<{ ok: boolean; memberId?: string; reason?: 'NOT_FOUND' | 'UNAUTHORIZED' | 'NOT_MEMBER' }>;
+}
+
+// Implementazioni: ESPNFantasyProvider, MockFantasyProvider (§17), in futuro SleeperFantasyProvider, YahooFantasyProvider
+  </script>
+  <script type="text/x-code" data-label="packages/providers/espn/src/espn-provider.ts (estratto)">
+const DEFAULT_HOST = 'https://lm-api-reads.fantasy.espn.com'; // configurabile via env: l'host è già cambiato una volta
+
+export class ESPNFantasyProvider implements FantasyProvider {
+  readonly id = 'espn';
+  readonly capabilities = { liveDraft: 'poll', pickTimestamps: false, clock: 'estimated', auction: true } as const;
+
+  constructor(private http: HttpClient, private host = process.env.ESPN_HOST ?? DEFAULT_HOST) {}
+
+  async getDraftSnapshot(ref, auth, opts) {
+    const url = `${this.host}/apis/v3/games/ffl/seasons/${ref.season}/segments/0/leagues/${ref.leagueId}?view=mDraftDetail`;
+    const res = await this.http.get(url, {
+      timeoutMs: 4000,
+      headers: { ...(opts?.etag && { 'If-None-Match': opts.etag }) },
+      cookies: auth.kind === 'cookies' ? { espn_s2: auth.espnS2, SWID: auth.swid } : undefined,
+      signal: opts?.signal,
+    });
+    if (res.status === 304) return { notModified: true };
+    if (res.status === 401) throw new ProviderAuthError('AUTH_LEAGUE_NOT_VISIBLE');
+    if (res.status === 429) throw new ProviderRateLimitError(parseRetryAfter(res.headers));
+    if (res.status >= 500)  throw new ProviderUnavailableError(res.status);
+    const raw = EspnDraftDetailSchema.parse(await res.json());    // zod: schema drift → errore esplicito
+    return { notModified: false, etag: res.headers.get('etag') ?? undefined, snapshot: toSnapshot(raw), raw };
+  }
+}
+
+// normalize: solo slot con giocatore valido; ordinati; id come stringhe
+export function toSnapshot(raw: EspnDraftDetail): DraftSnapshot {
+  const d = raw.draftDetail;
+  return {
+    status: d.drafted && !d.inProgress ? 'COMPLETED' : d.inProgress ? 'IN_PROGRESS' : 'SCHEDULED',
+    completedAt: d.completeDate ? new Date(d.completeDate).toISOString() : null,
+    picks: d.picks
+      .filter(p => p.playerId != null && p.playerId !== 0 && p.playerId !== -1) // semantica placeholder: UNVERIFIED
+      .map(p => ({
+        overallPick: p.overallPickNumber, round: p.roundId, pickInRound: p.roundPickNumber,
+        teamExternalId: String(p.teamId), playerExternalId: String(p.playerId),
+        isKeeper: p.keeper, isAutoPick: p.autoDraftTypeId > 0, bidAmount: p.bidAmount || null,
+        nominatingTeamExternalId: p.nominatingTeamId ? String(p.nominatingTeamId) : null,
+      }))
+      .sort((a, b) => a.overallPick - b.overallPick),
+  };
+}
+  </script>
+  <h3>API REST (Next.js)</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Metodo</th><th>Path</th><th>Scopo</th></tr></thead>
+    <tbody>
+      <tr><td>POST</td><td><code>/api/providers/espn/credentials</code></td><td>Salva espn_s2 e SWID cifrati, poi li valida con <code>validateAccess</code></td></tr>
+      <tr><td>POST</td><td><code>/api/leagues/import</code></td><td>{leagueId, season} → import di settings, team, membri, player pool e ordine</td></tr>
+      <tr><td>GET</td><td><code>/api/leagues/:id/preview</code></td><td>Anteprima prima di entrare nella draft room</td></tr>
+      <tr><td>GET</td><td><code>/api/drafts/:draftId/state</code></td><td>Snapshot <code>DraftState</code> completo, con <code>lastEventSeq</code></td></tr>
+      <tr><td>POST</td><td><code>/api/drafts/:draftId/realtime-ticket</code></td><td>JWT di 60 s (aud = draftId) per aprire l'SSE</td></tr>
+      <tr><td>GET (gateway)</td><td><code>/sse/drafts/:draftId?ticket=…</code></td><td>Stream di eventi; supporta <code>Last-Event-ID</code></td></tr>
+      <tr><td>POST</td><td><code>/api/demo/:draftId/control</code></td><td>Solo in demo e dev: delay, errori, disconnessioni</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="sync" data-n="07" data-t="ESPN sync engine">
+  <h2>ESPN Draft Sync Engine <small>07</small></h2>
+  <div class="flow"><span>ESPN</span><b>→</b><span>Adapter</span><b>→</b><span>Adaptive poller</span><b>→</b><span>Validate + contiguity</span><b>→</b><span>Fingerprint</span><b>→</b><span>Diff</span><b>→</b><span>TX: picks + outbox</span><b>→</b><span>Relay → Redis Stream</span><b>→</b><span>SSE</span></div>
+  <h3>Un solo poller per draft</h3>
+  <p>Quanti utenti guardano la stessa draft non conta: ESPN riceve una sola sequenza di richieste. Il worker acquisisce un <b>lease</b> su Redis (<code>SET lease:draft:{id} {workerId} NX PX 10000</code>, rinnovato ogni 3 s). Se il worker muore, un altro prende il lease entro 10 s. Il polling parte quando c'è almeno un client connesso o la draft è entro 10 minuti dall'inizio, e si ferma dopo 5 minuti senza spettatori.</p>
+  <h3>Frequenza e polling adattivo</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Situazione</th><th>Intervallo</th><th>Motivo</th></tr></thead>
+    <tbody>
+      <tr><td>Draft tra più di 10 min</td><td>60 s</td><td>Serve solo sapere se è iniziata</td></tr>
+      <tr><td>T−10 min → T−1 min</td><td>15 s → 3 s</td><td>Keeper, ordine, avvio anticipato</td></tr>
+      <tr><td>Live, appena rilevata una pick</td><td>1 s per 10 s</td><td>Le autopick arrivano a raffica</td></tr>
+      <tr><td>Live, standard</td><td>2 s</td><td>Latenza media di rilevazione circa 1 s</td></tr>
+      <tr><td>Live, nessun cambiamento da 30 s</td><td>3 s</td><td>Il manager sta pensando</td></tr>
+      <tr><td>Possibile pausa (3× timer)</td><td>5 s</td><td>Riduce il carico</td></tr>
+      <tr><td>Completata</td><td>stop (riconciliazione finale +60 s)</td><td>Correzioni del commissioner</td></tr>
+      <tr><td>Errore</td><td>1, 2, 4, 8, 16, poi 30 s (±20% jitter)</td><td>Exponential backoff</td></tr>
+      <tr><td>429</td><td><code>Retry-After</code> oppure 30 s, poi intervallo base ×2 per 5 min</td><td>Rispetto del limite</td></tr>
+    </tbody>
+  </table></div>
+  <p>Il budget è di circa 1.800 richieste all'ora per draft attiva a 2 s, con un payload di pochi KB perché si usa solo <code>view=mDraftDetail</code>. Settings e team si ricaricano ogni 60 s o quando cambia l'hash dello snapshot. Il roster non si richiede durante la draft: si deriva dalle pick.</p>
+  <h3>Algoritmo di un ciclo</h3>
+  <script type="text/x-code" data-label="apps/worker/src/sync/sync-once.ts">
+export async function syncOnce(ctx: DraftSyncContext): Promise<SyncOutcome> {
+  const t0 = performance.now();
+  const res = await ctx.provider.getDraftSnapshot(ctx.ref, ctx.auth, { etag: ctx.state.lastEtag, signal: AbortSignal.timeout(4000) });
+  if (res.notModified) return ctx.success({ changed: false, ms: performance.now() - t0 });
+
+  const snap = res.snapshot;
+  // 1. Contiguità: lo snapshot deve essere 1..n senza buchi, altrimenti non si committa nulla
+  const gaps = findGaps(snap.picks);                         // es. [4] se arrivano 1,2,3,5
+  if (gaps.length) {
+    metrics.gapDetected.inc();
+    if (ctx.state.gapRetries < 3) return ctx.retrySoon(150, { reason: 'GAP', gaps });  // re-fetch con cache-buster
+    snap.picks = snap.picks.filter(p => p.overallPick < gaps[0]);   // committa solo il prefisso coerente
+    ctx.degrade('GAP_PERSISTENT');
+  }
+  // 2. Fingerprint: nessun cambiamento → solo heartbeat
+  const fp = fingerprint(snap);                              // sha1(status + overall:player...)
+  if (fp === ctx.state.lastFingerprint) return ctx.success({ changed: false, ms: performance.now() - t0 });
+
+  // 3. Commit atomico con lock sulla draft
+  return db.$transaction(async (tx) => {
+    const draft = await tx.$queryRaw`SELECT * FROM "Draft" WHERE id = ${ctx.draftId} FOR UPDATE`;
+    const current = await loadActivePicks(tx, ctx.draftId);
+    const diff = diffPicks(current, snap.picks);             // created | updated | removed
+    if (diff.removed.length && ctx.state.pendingRemovalFp !== fp) {
+      await setPendingRemoval(tx, ctx.draftId, fp);          // gli undo richiedono 2 snapshot concordi
+      return { changed: false, retryInMs: 400 };
+    }
+    const events = buildEvents(draft, diff, snap);           // idempotencyKey per ogni evento
+    await applyDiff(tx, draft, diff);                        // upsert su (draftId, overallPick)
+    await appendOutbox(tx, draft, events);                   // seq = draft.eventSeq + 1..k
+    await tx.draft.update({ where: { id: draft.id }, data: { eventSeq: { increment: events.length }, stateVersion: { increment: 1 } } });
+    await updateSyncState(tx, ctx.draftId, { lastFingerprint: fp, lastKnownPick: snap.picks.length, lastEtag: res.etag });
+    return { changed: true, events: events.length };
+  });
+  // dopo il commit: outboxRelay.kick() → XADD draft:{id} (MAXLEN ~ 5000), poi publishedAt = now()
+}
+  </script>
+  <h3>Garanzie</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Problema</th><th>Soluzione</th></tr></thead>
+    <tbody>
+      <tr><td>Deduplicazione delle pick</td><td>Unique <code>(draftId, overallPick)</code>. Il diff lavora su chiavi naturali, quindi la stessa pick vista 100 volte produce zero eventi dopo la prima.</td></tr>
+      <tr><td>Idempotenza degli eventi</td><td><code>idempotencyKey</code> unica per ogni evento (<code>pick:{draft}:{overall}:{player}:r{revision}</code>). Un retry della transazione non duplica nulla.</td></tr>
+      <tr><td>Due poller contemporanei</td><td>Lease su Redis più <code>SELECT … FOR UPDATE</code> sulla draft più <code>stateVersion</code>: il secondo trova il fingerprint già aggiornato e non emette eventi.</td></tr>
+      <tr><td>Pubblicato ma non committato (o il contrario)</td><td>Transactional outbox: gli eventi esistono solo se il commit è riuscito. Il relay pubblica <em>at-least-once</em> e il client deduplica per <code>seq</code>.</td></tr>
+      <tr><td>Salto da pick 3 a 5</td><td>(a) Se ESPN restituisce 1..5, sono due pick tra un poll e l'altro: normale, vengono emessi 4 e poi 5 in ordine. (b) Se lo snapshot contiene 5 ma non 4, lo snapshot è incoerente: nessun commit, re-fetch immediato fino a 3 volte, poi commit del solo prefisso 1..3 e stato DEGRADED. Appena 4 compare si emettono 4 e 5.</td></tr>
+      <tr><td>Pick modificata dal commissioner</td><td>Stesso <code>overallPick</code> con un player diverso → <code>DRAFT_PICK_UPDATED</code> con <code>revision+1</code>.</td></tr>
+      <tr><td>Undo del commissioner</td><td>Pick presente nel DB e assente nello snapshot, confermata da <b>2 snapshot consecutivi</b> (anti-flap contro repliche stale della CDN) → <code>DRAFT_PICK_REMOVED</code>.</td></tr>
+      <tr><td>Schema drift di ESPN</td><td>Validazione zod: se fallisce, <code>SYNC_ERROR{code:'SCHEMA_DRIFT'}</code>, alert immediato e nessun commit. Il contract test notturno lo intercetta prima degli utenti.</td></tr>
+      <tr><td>ESPN irraggiungibile</td><td>Circuit breaker: 5 fallimenti → OPEN per 30 s → HALF_OPEN con una sola richiesta di prova. Dopo 2 fallimenti il client passa a DELAYED, dopo 30 s senza sync a OFFLINE.</td></tr>
+      <tr><td>Pick perse durante un downtime</td><td>Non si perde nulla: ogni poll legge lo snapshot completo, e al ritorno il diff emette tutte le pick mancanti in ordine con <code>source = PROVIDER_RESYNC</code>.</td></tr>
+    </tbody>
+  </table></div>
+</section>

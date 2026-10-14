@@ -1,0 +1,374 @@
+{
+  "season": "2019",
+  "scraped_at": "2026-02-08T12:17:17.397541",
+  "teams": {
+    "lasers": [
+      {
+        "pick": 1,
+        "name": "Julio Jones",
+        "position": "WR",
+        "nfl_team": "ATL"
+      },
+      {
+        "pick": 8,
+        "name": "Ezekiel Elliott",
+        "position": "RB",
+        "nfl_team": "DAL"
+      },
+      {
+        "pick": 9,
+        "name": "DeAndre Hopkins",
+        "position": "WR",
+        "nfl_team": "HOU"
+      },
+      {
+        "pick": 16,
+        "name": "Deshaun Watson",
+        "position": "QB",
+        "nfl_team": "HOU"
+      },
+      {
+        "pick": 17,
+        "name": "Odell Beckham",
+        "position": "WR",
+        "nfl_team": "CLE"
+      },
+      {
+        "pick": 24,
+        "name": "Joe Mixon",
+        "position": "RB",
+        "nfl_team": "CIN"
+      },
+      {
+        "pick": 25,
+        "name": "Evan Engram",
+        "position": "TE",
+        "nfl_team": "NYG"
+      },
+      {
+        "pick": 32,
+        "name": "Stefon Diggs",
+        "position": "WR",
+        "nfl_team": "MIN"
+      },
+      {
+        "pick": 33,
+        "name": "Russell Wilson",
+        "position": "QB",
+        "nfl_team": "SEA"
+      },
+      {
+        "pick": 40,
+        "name": "Los Angeles Rams",
+        "position": "DEF",
+        "nfl_team": ""
+      },
+      {
+        "pick": 41,
+        "name": "Wil Lutz",
+        "position": "K",
+        "nfl_team": "NO"
+      },
+      {
+        "pick": 48,
+        "name": "Dalvin Cook",
+        "position": "RB",
+        "nfl_team": "MIN"
+      },
+      {
+        "pick": 49,
+        "name": "Robert Woods",
+        "position": "WR",
+        "nfl_team": "LA"
+      },
+      {
+        "pick": 56,
+        "name": "Vance McDonald",
+        "position": "TE",
+        "nfl_team": "PIT"
+      },
+      {
+        "pick": 57,
+        "name": "T.Y. Hilton",
+        "position": "WR",
+        "nfl_team": "IND"
+      }
+    ],
+    "Capi dei Pianeti": [
+      {
+        "pick": 2,
+        "name": "Saquon Barkley",
+        "position": "RB",
+        "nfl_team": "NYG"
+      },
+      {
+        "pick": 7,
+        "name": "Patrick Mahomes",
+        "position": "QB",
+        "nfl_team": "KC"
+      },
+      {
+        "pick": 10,
+        "name": "Michael Thomas",
+        "position": "WR",
+        "nfl_team": "NO"
+      },
+      {
+        "pick": 15,
+        "name": "Antonio Brown",
+        "position": "WR",
+        "nfl_team": ""
+      },
+      {
+        "pick": 18,
+        "name": "James Conner",
+        "position": "RB",
+        "nfl_team": "PIT"
+      },
+      {
+        "pick": 23,
+        "name": "George Kittle",
+        "position": "TE",
+        "nfl_team": "SF"
+      },
+      {
+        "pick": 26,
+        "name": "Adam Thielen",
+        "position": "WR",
+        "nfl_team": "MIN"
+      },
+      {
+        "pick": 31,
+        "name": "Matt Ryan",
+        "position": "QB",
+        "nfl_team": "ATL"
+      },
+      {
+        "pick": 34,
+        "name": "Amari Cooper",
+        "position": "WR",
+        "nfl_team": "DAL"
+      },
+      {
+        "pick": 39,
+        "name": "Brandin Cooks",
+        "position": "WR",
+        "nfl_team": "LA"
+      },
+      {
+        "pick": 42,
+        "name": "Damien Williams",
+        "position": "RB",
+        "nfl_team": "KC"
+      },
+      {
+        "pick": 47,
+        "name": "Jared Cook",
+        "position": "TE",
+        "nfl_team": "NO"
+      },
+      {
+        "pick": 50,
+        "name": "Carson Wentz",
+        "position": "QB",
+        "nfl_team": "PHI"
+      },
+      {
+        "pick": 55,
+        "name": "Houston Texans",
+        "position": "DEF",
+        "nfl_team": ""
+      },
+      {
+        "pick": 58,
+        "name": "Harrison Butker",
+        "position": "K",
+        "nfl_team": "KC"
+      }
+    ],
+    "FedCom": [
+      {
+        "pick": 3,
+        "name": "Christian McCaffrey",
+        "position": "RB",
+        "nfl_team": "CAR"
+      },
+      {
+        "pick": 6,
+        "name": "Davante Adams",
+        "position": "WR",
+        "nfl_team": "GB"
+      },
+      {
+        "pick": 11,
+        "name": "Tyreek Hill",
+        "position": "WR",
+        "nfl_team": "KC"
+      },
+      {
+        "pick": 14,
+        "name": "Todd Gurley",
+        "position": "RB",
+        "nfl_team": "LA"
+      },
+      {
+        "pick": 19,
+        "name": "Zach Ertz",
+        "position": "TE",
+        "nfl_team": "PHI"
+      },
+      {
+        "pick": 22,
+        "name": "David Johnson",
+        "position": "RB",
+        "nfl_team": "ARI"
+      },
+      {
+        "pick": 27,
+        "name": "Keenan Allen",
+        "position": "WR",
+        "nfl_team": "LAC"
+      },
+      {
+        "pick": 30,
+        "name": "Baker Mayfield",
+        "position": "QB",
+        "nfl_team": "CLE"
+      },
+      {
+        "pick": 35,
+        "name": "Nick Chubb",
+        "position": "RB",
+        "nfl_team": "CLE"
+      },
+      {
+        "pick": 38,
+        "name": "O.J. Howard",
+        "position": "TE",
+        "nfl_team": "TB"
+      },
+      {
+        "pick": 43,
+        "name": "Leonard Fournette",
+        "position": "RB",
+        "nfl_team": "JAX"
+      },
+      {
+        "pick": 46,
+        "name": "Drew Brees",
+        "position": "QB",
+        "nfl_team": "NO"
+      },
+      {
+        "pick": 51,
+        "name": "Jacksonville Jaguars",
+        "position": "DEF",
+        "nfl_team": ""
+      },
+      {
+        "pick": 54,
+        "name": "New England Patriots",
+        "position": "DEF",
+        "nfl_team": ""
+      },
+      {
+        "pick": 59,
+        "name": "Greg Zuerlein",
+        "position": "K",
+        "nfl_team": "LA"
+      }
+    ],
+    "riccardo97com": [
+      {
+        "pick": 4,
+        "name": "Travis Kelce",
+        "position": "TE",
+        "nfl_team": "KC"
+      },
+      {
+        "pick": 5,
+        "name": "Alvin Kamara",
+        "position": "RB",
+        "nfl_team": "NO"
+      },
+      {
+        "pick": 12,
+        "name": "JuJu Smith-Schuster",
+        "position": "WR",
+        "nfl_team": "PIT"
+      },
+      {
+        "pick": 13,
+        "name": "Julian Edelman",
+        "position": "WR",
+        "nfl_team": "NE"
+      },
+      {
+        "pick": 20,
+        "name": "Le'Veon Bell",
+        "position": "RB",
+        "nfl_team": "NYJ"
+      },
+      {
+        "pick": 21,
+        "name": "Mike Evans",
+        "position": "WR",
+        "nfl_team": "TB"
+      },
+      {
+        "pick": 28,
+        "name": "Tyler Lockett",
+        "position": "WR",
+        "nfl_team": "SEA"
+      },
+      {
+        "pick": 29,
+        "name": "Aaron Rodgers",
+        "position": "QB",
+        "nfl_team": "GB"
+      },
+      {
+        "pick": 36,
+        "name": "Stephen Gostkowski",
+        "position": "K",
+        "nfl_team": "NE"
+      },
+      {
+        "pick": 37,
+        "name": "Chicago Bears",
+        "position": "DEF",
+        "nfl_team": ""
+      },
+      {
+        "pick": 44,
+        "name": "Kerryon Johnson",
+        "position": "RB",
+        "nfl_team": "DET"
+      },
+      {
+        "pick": 45,
+        "name": "Jordan Reed",
+        "position": "TE",
+        "nfl_team": "WAS"
+      },
+      {
+        "pick": 52,
+        "name": "Tom Brady",
+        "position": "QB",
+        "nfl_team": "NE"
+      },
+      {
+        "pick": 53,
+        "name": "Sony Michel",
+        "position": "RB",
+        "nfl_team": "NE"
+      },
+      {
+        "pick": 60,
+        "name": "Tyler Boyd",
+        "position": "WR",
+        "nfl_team": "CIN"
+      }
+    ]
+  }
+}

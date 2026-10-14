@@ -1,0 +1,36 @@
+<div id="view-teams" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2 id="tm-title">Le quattro squadre, adesso</h2><p>Formazioni schierate su ESPN, giornata per giornata: titolari e panchina di tutti, con punti fatti e proiezione. Serve a vedere in un colpo d'occhio chi sta andando, chi ha lasciato punti in panchina e come stanno messe le due sfide.</p></div>
+  <div class="an-bar">
+    <label>Ordina per <select id="tm-sort"><option value="live">Punti fatti</option><option value="proj">Proiezione</option><option value="league">Ordine di lega</option></select></label>
+    <span class="wkpick">Giornata
+      <button id="tm-wk-prev" title="giornata precedente">◀</button><b id="tm-wk-lbl">—</b><button id="tm-wk-next" title="giornata successiva">▶</button></span>
+    <label><input type="checkbox" id="tm-bench" checked> Mostra la panchina</label>
+    <span class="sp" id="tm-when"></span>
+  </div>
+  <div id="tm-matchups" class="strip"></div>
+  <div class="an-grid" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);margin-bottom:10px">
+    <div class="chartcard">
+      <h3>Le partite NFL della giornata</h3>
+      <p class="cn">Quote e meteo da ESPN. Il numero grande è il <b>totale implicito</b>: quanti punti il mercato si aspetta da quell'attacco. Sopra 26 è un contesto da fantasy, sotto 18 è una partita chiusa.</p>
+      <div style="overflow:auto;max-height:260px"><table class="antable" id="tm-games"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Ultimi movimenti della lega</h3>
+      <p class="cn">Aggiunte e tagli registrati su ESPN, dal più recente.</p>
+      <div style="overflow:auto;max-height:260px"><table class="antable" id="tm-tx"></table></div>
+    </div>
+  </div>
+  <div class="an-grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))" id="tm-grid"></div>
+  <div class="chartcard" style="margin-top:10px">
+    <h3>Quando hanno fatto i punti</h3>
+    <p class="cn">Clicca il punteggio di un giocatore per aggiungerlo al grafico (fino a quattro). La curva è il totale progressivo dei suoi punti fantasy lungo i 60 minuti di partita, ricostruito dal play-by-play: i gradini grandi sono i touchdown, i tratti piatti i minuti in cui è sparito dal gioco.</p>
+    <div class="an-bar" style="margin:0 0 10px">
+      <span class="sp" id="tm-chart-sel" style="margin-left:0">Nessun giocatore selezionato</span>
+      <button id="tm-chart-clear" style="margin-left:auto">Pulisci</button>
+    </div>
+    <div class="chartwrap" id="tm-chart"></div>
+    <div class="legend2" id="tm-chart-lg"></div>
+  </div>
+</div>
+</div>

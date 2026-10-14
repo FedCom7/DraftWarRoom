@@ -1,0 +1,150 @@
+<section id="auth" data-n="13" data-t="Authentication">
+  <h2>Authentication <small>13</small></h2>
+  <div class="callout"><p><b>Per Topina questo capitolo quasi non serve.</b> La lega è pubblica (<code>isPublic: true</code> <span class="tag v">VERIFIED</span>): nessun cookie, nessun vault, nessun flusso “Connect ESPN”. Basta il league ID in una variabile d'ambiente, e la tua squadra si riconosce dal SWID in <code>owners[]</code>. Il resto della sezione vale se un anno la lega diventa privata, o se il progetto viene aperto ad altri.</p></div>
+  <div class="flow"><span>Login app</span><b>→</b><span>Connect ESPN</span><b>→</b><span>League ID / URL</span><b>→</b><span>Validazione + membership</span><b>→</b><span>Import</span><b>→</b><span>Preview</span><b>→</b><span>Draft Room</span></div>
+  <ol>
+    <li><b>Login all'app:</b> Auth.js con magic link via email e Google OAuth. La sessione vive in un cookie <code>HttpOnly; Secure; SameSite=Lax</code>, lato database.</li>
+    <li><b>Connect ESPN:</b> ESPN non offre OAuth a terze parti, quindi ci sono tre percorsi:
+      <ul>
+        <li><b>Lega pubblica:</b> basta il league ID. Viene verificata con una richiesta non autenticata.</li>
+        <li><b>Lega privata, MVP:</b> l'utente incolla <code>espn_s2</code> e <code>SWID</code>, con una guida passo passo (DevTools → Application → Cookies su espn.com). È la pratica standard della community <span class="tag l">LIKELY</span>.</li>
+        <li><b>Lega privata, Fase 2:</b> una companion extension legge i due cookie con consenso esplicito e li invia con un clic. Nessun copia-incolla.</li>
+      </ul></li>
+    <li><b>Mai la password ESPN.</b> Il login Disney automatizzato (<code>registerdisney.go.com</code>) compare commentato nel codice di <code>espn-api</code>. Automatizzarlo è fragile, può violare i ToS e trasformerebbe l'app in un deposito di credenziali: escluso.</li>
+    <li><b>Validazione:</b> <code>validateAccess</code> chiama la lega con i cookie. Il SWID deve comparire in <code>members[].id</code>, e questo lega l'utente a un <code>LeagueMember</code> con <code>verifiedVia = PROVIDER_CREDENTIAL</code>.</li>
+    <li><b>Import e preview:</b> settings, team, ordine, player pool e “la tua squadra” individuata tramite <code>owners[]</code> che contiene il SWID.</li>
+  </ol>
+  <h3>Custodia delle credenziali ESPN</h3>
+  <ul>
+    <li><b>Envelope encryption:</b> per ogni credenziale si genera una DEK (32 byte), che cifra il payload con AES-256-GCM. La DEK viene poi cifrata dalla KMS (AWS KMS o GCP KMS), e il DB salva solo ciphertext, IV, tag e DEK cifrata.</li>
+    <li>Solo il worker ha il permesso IAM <code>kms:Decrypt</code>; l'app web può solo cifrare. La decifratura avviene in memoria, per singola richiesta, e il valore non viene mai loggato (redaction in pino).</li>
+    <li>La credenziale non torna mai al client. La UI mostra solo “ESPN collegato · verificato 2 ore fa”, con i pulsanti “Revoca” e “Aggiorna”.</li>
+    <li>Un 401 su una lega privata segna la credenziale come <code>INVALID</code>, genera <code>SYNC_ERROR{AUTH_INVALID}</code>, invia un'email e mostra la CTA per ricollegare. Il sistema passa a un'altra credenziale valida della stessa lega, se esiste.</li>
+  </ul>
+</section>
+
+<section id="security" data-n="14" data-t="Security">
+  <h2>Security <small>14</small></h2>
+  <div class="tw"><table>
+    <thead><tr><th>Area</th><th>Misura</th></tr></thead>
+    <tbody>
+      <tr><td>Authorization e tenant isolation</td><td>Ogni query su lega o draft passa da <code>assertLeagueAccess(userId, leagueId)</code>, che richiede un LeagueMember. Le leghe private sono visibili solo a membri verificati o invitati da loro. In Fase 2 si aggiunge la Row Level Security di Postgres come difesa in profondità.</td></tr>
+      <tr><td>WebSocket / SSE auth</td><td>Ticket JWT firmato (60 s, <code>aud</code> = draftId, <code>sub</code> = userId, <code>jti</code> monouso su Redis). Il gateway lo verifica alla connessione; la revoca della membership chiude lo stream.</td></tr>
+      <tr><td>Sessioni</td><td>Sessioni su database, rotazione al login e revoca di tutte le sessioni da impostazioni.</td></tr>
+      <tr><td>CSRF</td><td><code>SameSite=Lax</code>, verifica di <code>Origin</code> su tutte le mutazioni, CSRF token di Auth.js.</td></tr>
+      <tr><td>XSS</td><td>Nomi di team e membri ESPN sono input non fidati: sempre escaping di React, niente <code>dangerouslySetInnerHTML</code>, CSP rigorosa con nonce, Trusted Types in Fase 2.</td></tr>
+      <tr><td>SQL injection</td><td>Solo Prisma parametrizzato; per il raw SQL solo <code>Prisma.sql</code> con template; input validati con zod.</td></tr>
+      <tr><td>Rate limiting</td><td>Per utente e IP sulle API (sliding window su Redis). L'import di leghe è limitato per evitare che l'app diventi un proxy di scraping di ESPN. C'è un budget globale di richieste verso ESPN per worker.</td></tr>
+      <tr><td>Secrets</td><td>Secret manager della piattaforma (Vercel e Fly secrets), rotazione trimestrale, chiavi KMS separate per ambiente.</td></tr>
+      <tr><td>Privacy</td><td>Dati minimi, cancellazione account con cascade, nessun dato ESPN condiviso fuori dalla lega.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="errori" data-n="15" data-t="Error handling & resilience">
+  <h2>Error handling e resilienza <small>15</small></h2>
+  <p>Obiettivo: stato <em>eventually consistent</em>, senza mai mostrare una sequenza di pick impossibile. Il client applica gli eventi solo in ordine di <code>seq</code> e verifica gli invarianti (pick contigue, player unici). Se un invariante fallisce, scarta lo stato locale e ricarica lo snapshot.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Scenario</th><th>Comportamento</th></tr></thead>
+    <tbody>
+      <tr><td>Refresh del browser</td><td>SSR dello snapshot seguito dall'SSE da <code>lastEventSeq</code>: nessun buco possibile.</td></tr>
+      <tr><td>Sleep del laptop</td><td>Al <code>visibilitychange</code> la connessione si chiude, si scarica lo snapshot e si riconnette. Il clock si ricalcola da <code>expiresAt</code>.</td></tr>
+      <tr><td>Perdita di rete</td><td>Evento <code>offline</code> → OFFLINE immediato. Backoff 1, 2, 4… fino a 10 s; su <code>online</code> nuovo tentativo subito, poi replay da <code>Last-Event-ID</code>.</td></tr>
+      <tr><td>Restart del backend</td><td>Il lease scade e un nuovo worker riprende da Postgres (fingerprint e ultima pick). Il gateway chiude gli stream, i client si riconnettono con replay. L'outbox ripubblica ciò che non è stato pubblicato.</td></tr>
+      <tr><td>ESPN down</td><td>Backoff e circuit breaker; UI in DELAYED e poi OFFLINE con età dell'ultimo sync. Al ritorno, il diff dello snapshot completo recupera tutte le pick.</td></tr>
+      <tr><td>Rate limit ESPN</td><td><code>Retry-After</code> oppure 30 s, intervallo base raddoppiato per 5 minuti, alert se capita più di una volta all'ora.</td></tr>
+      <tr><td>SSE disconnesso</td><td>Riconnessione nativa e replay, oppure snapshot se il seq è oltre la retention.</td></tr>
+      <tr><td>Eventi duplicati</td><td>Scartati se <code>seq ≤ lastSeq</code>, conteggiati nella metrica <code>client_duplicate_dropped</code>.</td></tr>
+      <tr><td>Evento fuori ordine</td><td>Buffer; se il buco non si colma entro 1,5 s, resync.</td></tr>
+      <tr><td>Pick modificata</td><td><code>DRAFT_PICK_UPDATED</code> con revisione; il player sostituito torna disponibile.</td></tr>
+      <tr><td>Draft annullata o reset</td><td>Lo snapshot ha meno pick del DB per 2 volte consecutive → REMOVED in blocco. Se torna a <code>drafted:false</code> senza pick: <code>status = CANCELLED</code>, banner e archivio della board precedente.</td></tr>
+      <tr><td>Draft completata</td><td>DRAFT_COMPLETED, stop del polling, riconciliazione finale a +60 s, recap.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="test" data-n="16" data-t="Testing strategy">
+  <h2>Testing strategy <small>16</small></h2>
+  <div class="grid2">
+    <div class="card"><h4>Unit (Vitest)</h4><ul><li><code>diffPicks</code>: nuova, duplicata, mancante, fuori ordine, modificata, rimossa</li><li>Reducer del client e invarianti</li><li><code>toSnapshot</code> sulle fixture ESPN reali (snake, auction, TQB)</li><li>Modello di disponibilità e Pick Score</li></ul></div>
+    <div class="card"><h4>Property-based (fast-check)</h4><p>Per qualsiasi sequenza di snapshot generata (con repliche stale, buchi, duplicati), lo stato finale coincide con l'ultimo snapshot coerente e nessuno stato intermedio viola gli invarianti.</p></div>
+    <div class="card"><h4>Integrazione (Testcontainers)</h4><ul><li>Postgres e Redis reali: due worker in concorrenza, un solo set di eventi</li><li>Crash tra commit e publish → l'outbox ripubblica</li><li>Autenticazione fallita → credenziale INVALID</li></ul></div>
+    <div class="card"><h4>E2E (Playwright)</h4><ul><li>Mock provider con uno script di draft da 30 pick</li><li>3 browser in parallelo: stessa board, stessi tempi</li><li>Rete offline e online, sleep simulato, restart del gateway</li><li>Draft completata → recap</li></ul></div>
+    <div class="card"><h4>Contract test ESPN</h4><p>Canary notturno su una lega pubblica, con validazione dello schema zod e confronto delle chiavi con le fixture. Alert allo schema drift prima che si verifichi in una draft reale.</p></div>
+    <div class="card"><h4>Load</h4><p>k6: 500 draft simultanee su mock, 20 client ciascuna. Target: p95 da poll a client sotto 250 ms, esclusa ESPN.</p></div>
+  </div>
+  <script type="text/x-code" data-label="apps/worker/test/sync.missing-pick.test.ts">
+it('ESPN salta da 3 a 5: non committa 5 finché 4 non appare', async () => {
+  const espn = mockProvider.script([
+    snapshot([1, 2, 3]),
+    snapshot([1, 2, 3, 5]),            // replica incoerente
+    snapshot([1, 2, 3, 4, 5]),         // retry
+  ]);
+  const events = await runSyncCycles(espn, 3);
+  expect(events.filter(e => e.type === 'DRAFT_PICK_CREATED').map(e => e.payload.pick.overallPick))
+    .toEqual([1, 2, 3, 4, 5]);          // mai 5 prima di 4
+  expect(metrics.gapDetected.value).toBe(1);
+});
+  </script>
+</section>
+
+<section id="demo" data-n="17" data-t="Demo / mock system">
+  <h2>Demo e mock system <small>17</small></h2>
+  <p><code>MockFantasyProvider</code> implementa la stessa interfaccia di ESPN e produce payload nel <b>formato ESPN verificato</b> (<code>draftDetail.picks[]</code> con gli stessi campi). In questo modo la demo mette alla prova anche adapter e normalizzazione, non solo la UI.</p>
+  <script type="text/x-code" data-label="packages/providers/mock/src/scenario.ts">
+const scenario = mockDraft({ teams: 10, rounds: 15, secondsPerPick: 60, myTeam: 4, seed: 42 })
+  .pick(1).wait('2s')
+  .pick(2).wait('5s')
+  .pick(3)
+  .failEspn(503, { times: 3 })         // backoff + DELAYED
+  .staleSnapshot({ missing: 4 })       // gap → resync
+  .pick(4).pick(5).wait('1s')
+  .rateLimit({ retryAfter: '10s' })
+  .commissionerUndo(5)
+  .autoDraftRest({ delay: '1.5s' });
+
+// CLI:  pnpm mock-draft --scenario=chaos --speed=4x
+// Modalità DEMO DRAFT: /draft/demo-xxxx con pannello di controllo → POST /api/demo/:id/control
+  </script>
+  <p>Il pannello DEMO DRAFT permette di avviare la draft, fare pick, cambiare il ritardo, simulare errori ESPN (503, 429, timeout), interrompere e ripristinare la connessione, verificare il reconnect e osservare l'event stream in tempo reale. <a href="#console" data-goto="console">La console demo</a> implementa tutto questo nel browser, con lo stesso algoritmo descritto sopra.</p>
+</section>
+
+<section id="deploy" data-n="18" data-t="Deployment">
+  <h2>Deployment <small>18</small></h2>
+  <div class="tw"><table>
+    <thead><tr><th>Componente</th><th>Dove</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>apps/web</td><td>Vercel</td><td>Preview per PR; env: DATABASE_URL (pooled), GATEWAY_URL, KMS encrypt-only</td></tr>
+      <tr><td>apps/worker</td><td>Fly.io, 2 macchine, regione <code>iad</code></td><td>Lease su Redis, scaling per numero di draft attive. Regione vicina all'origine ESPN <span class="tag a">ASSUMPTION</span> (da misurare)</td></tr>
+      <tr><td>apps/gateway</td><td>Fly.io, 2+ macchine, <code>iad</code> più <code>fra</code></td><td>Stateless; SSE HTTP/2; fly-proxy con idle timeout adeguato</td></tr>
+      <tr><td>Postgres</td><td>Neon (oppure Fly Postgres)</td><td>Pooling con PgBouncer per Vercel; connessione diretta per il worker</td></tr>
+      <tr><td>Redis</td><td>Upstash (connessione TCP) oppure Fly Redis</td><td>Streams, lease, rate limit, ticket jti</td></tr>
+      <tr><td>CI/CD</td><td>GitHub Actions</td><td>lint, typecheck, unit, integrazione, e2e su mock; <code>prisma migrate deploy</code>; deploy canary del worker</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<section id="monitor" data-n="19" data-t="Monitoring">
+  <h2>Observability <small>19</small></h2>
+  <p>OpenTelemetry (trace <code>poll → tx → publish → sse</code>) e log strutturati pino verso Grafana Cloud (Loki, Prometheus, Tempo); Sentry per gli errori di frontend e backend.</p>
+  <script type="text/x-code" data-label="log di un ciclo di sync">
+{"level":"info","msg":"sync.completed","draftId":"drf_8Kq","provider":"espn","leagueId":"123456","season":2026,
+ "attempt":1,"httpStatus":200,"durationMs":184,"etag":"W/\"0bf…\"","picksInSnapshot":42,"lastKnownPick":41,
+ "newPicks":[42],"updated":0,"removed":0,"gaps":[],"retryCount":0,"intervalMs":1000,"eventsSeq":[318,321],
+ "traceId":"4bf92f35…"}
+  </script>
+  <div class="tw"><table>
+    <thead><tr><th>Metrica</th><th>Tipo</th><th>Alert</th></tr></thead>
+    <tbody>
+      <tr><td><code>espn_request_duration_ms{view,status}</code></td><td>histogram</td><td>p95 oltre 1,5 s per 5 min</td></tr>
+      <tr><td><code>espn_errors_total{code}</code></td><td>counter</td><td>5 errori consecutivi su una draft live</td></tr>
+      <tr><td><code>sync_detect_to_publish_ms</code></td><td>histogram</td><td>p95 oltre 300 ms</td></tr>
+      <tr><td><code>event_delivery_ms</code> (RUM, dal client)</td><td>histogram</td><td>p95 oltre 800 ms</td></tr>
+      <tr><td><code>sse_connections</code>, <code>draft_rooms_active</code></td><td>gauge</td><td>—</td></tr>
+      <tr><td><code>picks_processed_total{source}</code></td><td>counter</td><td>—</td></tr>
+      <tr><td><code>sync_gap_detected_total</code>, <code>sync_schema_drift_total</code></td><td>counter</td><td>schema drift: page immediato</td></tr>
+      <tr><td><code>client_duplicate_dropped_total</code>, <code>client_resync_total</code></td><td>counter</td><td>resync oltre 3 per client all'ora</td></tr>
+    </tbody>
+  </table></div>
+  <p>La latenza tra ESPN e il client non è misurabile direttamente, perché ESPN non fornisce timestamp per le pick. Si misura quindi tra rilevazione e client, più l'intervallo di poll come limite superiore. Nello Spike 0 si calibra la parte mancante con l'HAR.</p>
+</section>

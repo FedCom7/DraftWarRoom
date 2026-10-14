@@ -1,0 +1,439 @@
+<script>
+(()=>{
+'use strict';
+const D=window.DWR,A=window.DWR2,M=window.DWR3;
+const {TBY,MY,esc,Phi}=D;const {POSC,ALLP,n0,n1,R,svgEl}=A;
+const {POOL,lineupOf,weekPts,basePPG,SLOTS,WEEK,injOf,adv,matchup}=M;
+const $=(s,r=document)=>r.querySelector(s);
+const TOP=window.TOPINA,LG=TOP.lg,HI=TOP.hist;
+const MKEY={3:'sommo',1:'oscurus',2:'lasers',4:'capi'};
+const NAME={sommo:'Sommo',oscurus:'Oscurus',lasers:'lasers',capi:'Capi dei Pianeti'};
+const f1=v=>v==null?'—':n1(v);
+const S2={trTeam:null,trMin:1,tmSort:'live',tmBench:true,tmWk:null};
+
+/* ================= MATCHUP ================= */
+const gameOf=(w,t)=>LG.games.find(g=>g.w===w&&(g.h===t||g.a===t))||null;
+const oppOf=(w,t)=>{const g=gameOf(w,t);return g?(g.h===t?g.a:g.h):null};
+function proj(team,week){
+  const L=lineupOf(team,week);
+  return{L,tot:L.rows.reduce((s,r)=>s+(r.x?r.x.pts:0),0)}
+}
+function renderMatchup(){
+  const opp=oppOf(WEEK,MY);
+  if(!opp){$('#mu-strip').innerHTML='<div class="sc"><h4>Nessuna partita</h4><div class="verd">Il calendario della lega non prevede una sfida in questa settimana.</div></div>';return}
+  const me=proj(MY,WEEK),ot=proj(opp,WEEK);
+  const margin=me.tot-ot.tot, sd=Math.sqrt(2)*26;           // scarto tipico dei punteggi in questa lega
+  const p=Phi(margin/sd);
+  const rec=t=>{const r=LG.rec[t]||{};return `${r.w??0}-${r.l??0}`};
+  $('#mu-strip').innerHTML=`
+    <div class="sc"><h4>Settimana ${WEEK}</h4><div class="kv"><span>sfida</span><b>${esc(TBY.get(MY).name)} · ${esc(TBY.get(opp).name)}</b></div>
+      <div class="kv"><span>record</span><b>${rec(MY)} contro ${rec(opp)}</b></div><div class="verd">${margin>=0?'Parti avanti':'Parti dietro'} di ${n1(Math.abs(margin))} punti attesi.</div></div>
+    <div class="sc"><h4>Tu</h4><div class="kv"><span>titolari proiettati</span><b>${n1(me.tot)}</b></div>
+      <div class="kv"><span>panchina</span><b>${n1(me.L.bench.reduce((s,b)=>s+b.pts,0))}</b></div>
+      <div class="verd">${me.L.rows.filter(r=>r.x&&r.x.pts===0).length?'Hai slot scoperti o giocatori in bye.':'Formazione al completo.'}</div></div>
+    <div class="sc"><h4>${esc(TBY.get(opp).name)}</h4><div class="kv"><span>titolari proiettati</span><b>${n1(ot.tot)}</b></div>
+      <div class="kv"><span>punti fatti finora</span><b>${(LG.rec[opp]||{}).pf ?? '—'}</b></div>
+      <div class="verd">${ot.L.rows.filter(r=>r.x&&r.x.pts===0).length?'Ha problemi di formazione: qualcuno è fuori o in bye.':'Anche lui schiera tutto.'}</div></div>
+    <div class="sc"><h4>Probabilità</h4><div class="kv"><span>vittoria stimata</span><b>${Math.round(p*100)}%</b></div>
+      <div class="kv"><span>scarto tipico</span><b>±${n0(sd)} pt</b></div>
+      <div class="verd">Con questa varianza, ${Math.abs(margin)<12?'è sostanzialmente una moneta':'il favorito ha un margine reale ma non decisivo'}.</div></div>`;
+
+  slotChart(me.L.rows,ot.L.rows);
+  $('#mu-table').innerHTML=`<thead><tr><th>Slot</th><th>${esc(TBY.get(MY).abbr)}</th><th class="num">Attesi</th><th class="num">Δ</th><th class="num">Attesi</th><th>${esc(TBY.get(opp).abbr)}</th></tr></thead><tbody>`+
+    me.L.rows.map((r,i)=>{
+      const o=ot.L.rows[i],a=r.x?r.x.pts:0,b=o&&o.x?o.x.pts:0,d=a-b;
+      const cell=x=>x&&x.x?`<span data-pid="${x.x.p.id}"><span class="pos pos-${x.x.p.pos}">${x.x.p.pos}</span> ${esc(x.x.p.name)}</span>${x.x.p.inj?` <span class="tag2 bad">${x.x.p.inj}</span>`:''}`:'<span style="color:var(--offline)">scoperto</span>';
+      return`<tr><td><b>${r.lab}</b></td><td>${cell(r)}</td><td class="num">${n1(a)}</td>
+        <td class="num" style="color:${d>3?'var(--live)':d<-3?'var(--offline)':'var(--k-muted)'}">${d>0?'+':''}${n1(d)}</td>
+        <td class="num">${n1(b)}</td><td>${cell(o)}</td></tr>`}).join('')+
+    `<tr><td><b>Totale</b></td><td></td><td class="num"><b>${n1(me.tot)}</b></td><td class="num" style="color:${margin>0?'var(--live)':'var(--offline)'}"><b>${margin>0?'+':''}${n1(margin)}</b></td><td class="num"><b>${n1(ot.tot)}</b></td><td></td></tr></tbody>`;
+
+  const duels=me.L.rows.map((r,i)=>{const o=ot.L.rows[i];return{lab:r.lab,a:r.x,b:o&&o.x,d:(r.x?r.x.pts:0)-(o&&o.x?o.x.pts:0)}})
+    .sort((x,y)=>Math.abs(y.d)-Math.abs(x.d)).slice(0,4);
+  const boom=[...ot.L.rows.filter(r=>r.x).map(r=>r.x)].sort((a,b)=>b.pts-a.pts)[0];
+  const mine=[...me.L.rows.filter(r=>r.x).map(r=>r.x)].sort((a,b)=>b.pts-a.pts)[0];
+  $('#mu-keys').innerHTML=duels.map(x=>`<div class="mrow" style="grid-template-columns:54px 1fr 64px">
+      <span class="l">${x.lab}</span>
+      <span style="font-size:12px">${x.a?esc(x.a.p.name):'—'} <span style="color:var(--k-muted)">contro</span> ${x.b?esc(x.b.p.name):'—'}</span>
+      <span class="v" style="color:${x.d>0?'var(--live)':'var(--offline)'}">${x.d>0?'+':''}${n1(x.d)}</span></div>`).join('')+
+    `<div style="font-size:12px;color:var(--k-muted);margin-top:8px">Il pericolo principale è <b style="color:var(--k-ink)">${boom?esc(boom.p.name):'—'}</b> (${boom?n1(boom.pts):'—'} attesi); la tua risposta è <b style="color:var(--k-me)">${mine?esc(mine.p.name):'—'}</b> (${mine?n1(mine.pts):'—'}).</div>`;
+
+  const next=LG.games.filter(g=>g.w>=WEEK&&g.w<=WEEK+5);
+  $('#mu-sched').innerHTML=`<thead><tr><th>Sett.</th><th>Partita</th><th class="num">La tua</th></tr></thead><tbody>`+
+    next.map(g=>`<tr class="${g.h===MY||g.a===MY?'mine':''}"><td>${g.w}</td>
+      <td>${esc(TBY.get(g.h).name)} · ${esc(TBY.get(g.a).name)}</td>
+      <td class="num">${g.h===MY||g.a===MY?'sì':''}</td></tr>`).join('')+'</tbody>';
+}
+
+function slotChart(mine,theirs){
+  const W=860,L=76,R=64,T=10,rowH=26,H=T+mine.length*rowH+22;
+  const max=Math.max(...mine.concat(theirs).map(r=>r&&r.x?r.x.pts:0),10)*1.08;
+  const x=v=>L+v/max*(W-L-R);
+  let s='';
+  [0,max/2,max].forEach(v=>{s+=`<line x1="${x(v).toFixed(1)}" y1="${T-4}" x2="${x(v).toFixed(1)}" y2="${H-22}" stroke="#1E2833"/>`+
+    `<text x="${x(v).toFixed(1)}" y="${H-8}" fill="#7C8996" font-size="9" text-anchor="middle">${n0(v)}</text>`});
+  mine.forEach((r,i)=>{
+    const o=theirs[i],a=r.x?r.x.pts:0,b=o&&o.x?o.x.pts:0,y=T+i*rowH+rowH/2;
+    s+=`<text x="${L-8}" y="${y+3.5}" fill="#8593A2" font-size="10.5" text-anchor="end">${r.lab}</text>`;
+    s+=`<line x1="${x(Math.min(a,b)).toFixed(1)}" y1="${y}" x2="${x(Math.max(a,b)).toFixed(1)}" y2="${y}" stroke="${a>=b?'var(--k-me)':'var(--offline)'}" stroke-width="2.5" opacity=".7"/>`;
+    s+=`<circle cx="${x(b).toFixed(1)}" cy="${y}" r="4.5" fill="var(--offline)"><title>${o&&o.x?esc(o.x.p.name):'—'}: ${n1(b)}</title></circle>`;
+    s+=`<circle cx="${x(a).toFixed(1)}" cy="${y}" r="5" fill="var(--k-me)"${r.x?` data-pid="${r.x.p.id}"`:''}><title>${r.x?esc(r.x.p.name):'—'}: ${n1(a)}</title></circle>`;
+    s+=`<text x="${W-R+8}" y="${y+3.5}" fill="${a>=b?'var(--k-me)':'var(--offline)'}" font-size="10.5" font-weight="600">${a-b>0?'+':''}${n1(a-b)}</text>`;
+  });
+  $('#mu-chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Confronto per slot">${s}</svg>`;
+}
+
+/* ================= TUTTE LE SQUADRE, LIVE ================= */
+const WK=window.TOPINA.week;
+/* la giornata mostrata: di default quella in corso, i bottoni ◀ ▶ tornano indietro */
+const TWK=()=>S2.tmWk||WK;
+const WKS=()=>{const a=Object.keys((window.TOPINA.lg||{}).byWeek||{}).map(Number);
+  if(!a.includes(WK))a.push(WK);return a.sort((x,y)=>x-y)};
+/* per la giornata in corso valgono le formazioni vive, per le passate quelle archiviate */
+const LINEUPS=w=>{const lg=window.TOPINA.lg||{},wk=w||TWK();
+  return wk===WK?(lg.lineups||{}):((lg.byWeek||{})[String(wk)]||{})};
+function teamTotals(tid){
+  const rows=LINEUPS()[String(tid)]||[];
+  const st=rows.filter(r=>r.starter),be=rows.filter(r=>!r.starter);
+  const sum=(a,k)=>a.reduce((s,r)=>s+(r[k]||0),0);
+  return{rows,st,be,act:sum(st,'act'),proj:sum(st,'proj'),benchAct:sum(be,'act'),
+    left:be.filter(r=>r.act!=null).reduce((s,r)=>s+r.act,0)}
+}
+function renderTeams(){
+  const wk=TWK(), live=wk===WK, av=WKS();
+  const gst=live?GSTATE():{};                      // lo stato delle partite vale solo per la giornata in corso
+  $('#tm-wk-lbl').textContent=`s${wk}`+(live?' · ora':'');
+  $('#tm-title').textContent=live?'Le quattro squadre, adesso':`Le quattro squadre, giornata ${wk}`;
+  $('#tm-wk-prev').disabled=wk<=av[0];
+  $('#tm-wk-next').disabled=wk>=av[av.length-1];
+  const when=window.TOPINA.generatedAt||'';
+  const AGE=window.DWR_AGE();
+  const inPlay=Object.values(gst).filter(s=>s.state==='in').length/2;
+  $('#tm-when').innerHTML=live
+    ? `<b style="color:${AGE.fresh?'var(--live)':'var(--delayed)'}">Dati di ${esc(AGE.txt)}</b>`+
+      ` (${esc(when.slice(0,16).replace('T',' alle '))}) · settimana ${WK}`+
+      (inPlay?` · <b style="color:var(--live)">${Math.round(inPlay)} partite in corso</b>`:'')+
+      (window.DWR_LIVE
+        ? ` · <span style="color:#5C6874">si aggiorna da solo ogni 30 secondi</span>`
+        : ` · <span style="color:#5C6874">copia statica: ricaricare non aggiorna, serve rigenerare i dati</span>`)
+    : `<b>Giornata ${wk}, archiviata</b> · <span style="color:#5C6874">formazioni e punti definitivi come li ha chiusi ESPN</span>`;
+  const ids=[1,2,3,4];
+  const tot={};ids.forEach(t=>tot[t]=teamTotals(t));
+  // le due sfide della settimana
+  const gs=(window.TOPINA.lg.games||[]).filter(g=>g.w===wk);
+  $('#tm-matchups').innerHTML=gs.map(g=>{
+    const a=tot[g.h],b=tot[g.a];
+    const lead=a.act===b.act?null:(a.act>b.act?g.h:g.a);
+    const mine=g.h===MY||g.a===MY;
+    return`<div class="sc" style="${mine?'border-top-color:var(--k-me)':''}">
+      <h4>${esc(TBY.get(g.h).name)} · ${esc(TBY.get(g.a).name)}</h4>
+      <div class="kv"><span>punti fatti</span><b>${n1(a.act)} – ${n1(b.act)}</b></div>
+      <div class="kv"><span>proiezione</span><b>${n1(a.proj)} – ${n1(b.proj)}</b></div>
+      <div class="verd">${lead?`Avanti <b>${esc(TBY.get(lead).name)}</b> di ${n1(Math.abs(a.act-b.act))}`:'Perfetta parità'}${mine?' · è la tua sfida':''}</div></div>`
+  }).join('');
+  // partite NFL della giornata, viste dalle squadre dove ho gente
+  const GAMES=window.TOPINA.games||{};
+  const sky=v=>(v==null||/^\d+$/.test(String(v)))?'':' · '+esc(String(v));   // ESPN a volte manda solo un codice
+  const mineTeams=new Set(Object.values(LINEUPS(wk)).flat().map(r=>(POOL.find(x=>x.id===r.id)||{}).nfl).filter(Boolean));
+  const gl=Object.entries(GAMES).map(([t,w])=>({t,g:w[String(wk)]})).filter(x=>x.g&&mineTeams.has(x.t))
+    .sort((a,b)=>(b.g.implied||0)-(a.g.implied||0));
+  $('#tm-games').innerHTML=`<thead><tr><th>Squadra</th><th>Partita</th><th class="num">Totale</th><th class="num">Spread</th><th class="num">Punti attesi</th><th>Campo e meteo</th></tr></thead><tbody>`+
+    (gl.length?gl:[]).map(x=>{const g=x.g,st=(gst[x.t]||{});
+      return`<tr><td><b>${x.t}</b></td>
+        <td>${g.home?'contro ':'a '}${esc(g.opp||'—')}${st.state==='in'?` <span class="tag2 good">${esc(st.detail||'in corso')}</span>`:st.state==='post'?' <span class="tag2">finita</span>':''}</td>
+        <td class="num">${g.total??'—'}</td><td class="num">${g.spread==null?'—':(g.spread>0?'+':'')+g.spread}</td>
+        <td class="num" style="color:${g.implied==null?'var(--k-muted)':g.implied>=26?'var(--live)':g.implied<=18?'var(--offline)':'var(--k-ink)'}"><b>${g.implied??'—'}</b></td>
+        <td style="color:var(--k-muted)">${g.indoor?'al chiuso':'all\'aperto'}${g.temp!=null?` · ${g.temp}°F`:''}${sky(g.sky)}</td></tr>`}).join('')+
+    (gl.length?'':`<tr><td colspan="6" style="color:var(--k-muted)">Quote e meteo si tengono solo per la giornata in corso e le successive: per la ${wk}ª restano i punti delle formazioni.</td></tr>`)+'</tbody>';
+
+  // movimenti della lega
+  const TXALL=window.TOPINA.transactions||[];
+  const TX=live?TXALL:TXALL.filter(t=>t.week===wk);
+  const nameOf=id=>{const p=POOL.find(x=>x.id===id);return p?p.name:'#'+id};
+  $('#tm-tx').innerHTML=`<thead><tr><th>Quando</th><th>Squadra</th><th>Movimento</th></tr></thead><tbody>`+
+    (TX.length?TX.slice(0,14).map(t=>`<tr class="${t.team===MY?'mine':''}">
+      <td style="white-space:nowrap">${t.date?esc(new Date(t.date).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'})):'—'} <small style="color:var(--k-muted)">s${t.week||''}</small></td>
+      <td>${esc((TBY.get(t.team)||{}).name||'—')}</td>
+      <td style="white-space:normal">${t.add.map(i=>`<span style="color:var(--live)">+ ${esc(nameOf(i))}</span>`).join(' ')}${t.add.length&&t.drop.length?' · ':''}${t.drop.map(i=>`<span style="color:var(--offline)">− ${esc(nameOf(i))}</span>`).join(' ')}</td></tr>`).join('')
+      :`<tr><td colspan="3" style="color:var(--k-muted)">Nessun movimento ${live?'registrato in questa stagione':'nella giornata '+wk}.</td></tr>`)+'</tbody>';
+
+  const order=S2.tmSort==='league'?ids:ids.slice().sort((x,y)=>S2.tmSort==='proj'?tot[y].proj-tot[x].proj:tot[y].act-tot[x].act);
+  $('#tm-grid').innerHTML=order.map(tid=>{
+    const t=tot[tid],rec=(window.TOPINA.lg.rec||{})[tid]||{},me=tid===MY;
+    const opp=(gs.find(g=>g.h===tid||g.a===tid)||{});
+    const oppId=opp.h===tid?opp.a:opp.h;
+    const row=r=>{
+      const p=POOL.find(x=>x.id===r.id);
+      const done=r.act!=null, pct=r.proj?Math.min(100,(r.act||0)/r.proj*100):0;
+      const m=p?matchup(p,wk):null;
+      const has=hasCurve(r.id,wk), on=SEL.includes(r.id);
+      return`<div class="un tmrow${on?' on':''}" style="grid-template-columns:40px 1fr 46px 38px;padding:3px 0">
+        <span class="p" style="background:${p?POSC[p.pos]:'#444'};font-size:9px">${r.slot}</span>
+        <span class="n" data-pid="${r.id}">${esc(p?p.name:'—')}${(gst[p?p.nfl:'']||{}).state==='in'?' <span class="livedot" title="sta giocando"></span>':''}
+          <small style="color:var(--k-muted)">${p?p.nfl:''}${p&&p.bye===wk?' · bye':m?' · '+esc(m.opp):''}${r.inj?' · '+r.inj:''}</small></span>
+        <span class="pts${done?'':' na'}${has?' clk':''}"${has?` data-curve="${r.id}"`:''} title="${has?'clicca per vedere quando ha fatto i punti':''}">${done?n1(r.act):'—'}</span>
+        <span class="proj">${r.proj!=null?n1(r.proj):'—'}</span>
+      </div>${done&&r.proj?`<div class="mini" style="width:100%;height:3px;margin:0 0 3px"><i style="width:${pct}%;background:${pct>=100?'var(--live)':'var(--k-me)'}"></i></div>`:''}`;
+    };
+    return`<div class="chartcard" style="${me?'border-color:var(--k-me)':''}">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:8px">
+        <h3 style="font:700 19px/1 var(--display);text-transform:uppercase;cursor:pointer;border-bottom:1px dotted #48586A" data-team="${tid}" title="clicca per mettere in grafico tutti i suoi titolari">${esc(TBY.get(tid).name)}</h3>
+        ${me?'<span class="tag2" style="color:var(--k-me)">tu</span>':''}
+        <span style="margin-left:auto;font:700 20px var(--display);color:var(--k-y)">${n1(t.act)}</span>
+        <span style="font-size:11px;color:var(--k-muted)">di ${n1(t.proj)}</span></div>
+      <div style="font-size:11.5px;color:var(--k-muted);margin-bottom:8px">
+        ${live?'':'a oggi '}${rec.w ?? 0}-${rec.l ?? 0} · ${rec.pf ?? '—'} punti stagionali${oppId?` · contro ${esc(TBY.get(oppId).name)}`:''}</div>
+      <div style="display:grid;grid-template-columns:40px 1fr 46px 38px;font:600 9.5px var(--mono);letter-spacing:.05em;color:#5C6874;padding-bottom:3px;border-bottom:1px solid var(--k-line)">
+        <span>SLOT</span><span>GIOCATORE</span><span>FATTI</span><span>PROJ</span></div>
+      ${t.st.map(row).join('')}
+      ${S2.tmBench?`<div style="margin-top:8px;padding-top:6px;border-top:1px solid var(--k-line)">
+        <div style="font:600 9.5px var(--mono);letter-spacing:.05em;color:#5C6874;margin-bottom:3px">PANCHINA · ${n1(t.benchAct)} fatti · ${n1(t.be.reduce((s,r)=>s+(r.proj||0),0))} proiettati</div>
+        ${t.be.map(row).join('')}</div>`:''}
+    </div>`}).join('');
+  curveChart();
+}
+
+/* --- curva dei punti durante la partita, dal play-by-play --- */
+const CURVES=()=>window.TOPINA.curves||{};
+const hasCurve=(id,w)=>{const c=CURVES()[String(id)],k=String(w||TWK());return !!(c&&c[k]&&c[k].length)};
+let SEL=[];
+const SELCOL=['#3CC7F5','#F2D82E','#34D399','#F47272','#F4A63B','#BFA8FB','#8FD0C4','#E88BC0','#9AA8BA'];
+const GSTATE=()=>window.TOPINA.gameState||{};
+function toggleCurve(id){
+  id=+id;
+  SEL=SEL.includes(id)?SEL.filter(x=>x!==id):[...SEL,id].slice(-9);
+  renderTeams();
+}
+/* un clic sulla squadra mette in grafico tutta la sua formazione */
+function toggleTeam(tid){
+  const ids=(LINEUPS()[String(tid)]||[]).filter(r=>r.starter).map(r=>r.id);   // della giornata mostrata
+  const allIn=ids.length&&ids.every(i=>SEL.includes(i));
+  SEL=allIn?SEL.filter(i=>!ids.includes(i)):[...new Set([...SEL,...ids])].slice(-9);
+  renderTeams();
+}
+function curveChart(){
+  const wrap=$('#tm-chart');if(!wrap)return;
+  const wk=TWK(), live=wk===WK, gst=live?GSTATE():{};
+  const sel=SEL.map(id=>({id,p:POOL.find(x=>x.id===id),c:(CURVES()[String(id)]||{})[String(wk)]||[]})).filter(x=>x.c.length);
+  const waiting=SEL.filter(id=>!hasCurve(id,wk)).length;
+  $('#tm-chart-sel').textContent=sel.length
+    ?`${sel.length} giocator${sel.length>1?'i':'e'} sul grafico${waiting?` · ${waiting} senza curva (${live?'deve ancora scendere in campo':'nessuna giocata registrata'})`:''}`
+    :'Nessun giocatore selezionato: clicca un punteggio, o il nome di una squadra';
+  const lw=LINEUPS(wk);
+  const official=id=>{for(const t in lw){const r=lw[t].find(x=>x.id===id);if(r)return r.act}return null};
+  $('#tm-chart-lg').innerHTML=sel.map((s,i)=>{
+      const st=(gst[s.p?s.p.nfl:'']||{});
+      const mine=s.c[s.c.length-1][1], off=official(s.id);
+      const gap=off!=null&&Math.abs(off-mine)>=0.5;
+      return`<span><i style="background:${SELCOL[i%SELCOL.length]}"></i>${esc(s.p?s.p.name:s.id)} · ${n1(off!=null?off:mine)} punti${st.state==='in'?` <b style="color:var(--live)">in campo ${esc(st.detail||'')}</b>`:st.state==='pre'?' · non ha ancora giocato':''}${gap?` <span style="color:#5C6874">(curva ${n1(mine)})</span>`:''}</span>`}).join('')
+    +'<span style="color:#5C6874">pallini grandi: touchdown · tratteggio: partita non iniziata · la curva è ricostruita dalle giocate</span>';
+  const W=880,H=300,L=40,R=86,T=16,B=32;   // margine destro per le etichette
+  const maxY=Math.max(12,...sel.flatMap(s=>s.c.map(e=>e[1])))*1.1;
+  const maxX=Math.max(3600,...sel.flatMap(s=>s.c.map(e=>e[0])));
+  const x=v=>L+v/maxX*(W-L-R),y=v=>H-B-Math.max(0,v)/maxY*(H-B-T);
+  let g='';
+  [0,900,1800,2700,3600].forEach((sec,i)=>{
+    if(sec>maxX)return;
+    g+=`<line x1="${x(sec).toFixed(1)}" y1="${T-6}" x2="${x(sec).toFixed(1)}" y2="${H-B}" stroke="${i===2?'#3A4756':'#1E2833'}"/>`;
+    g+=`<text x="${x(sec).toFixed(1)}" y="${H-B+14}" fill="#7C8996" font-size="9" text-anchor="middle">${sec/60}'</text>`;
+  });
+  ['1°','2°','3°','4°'].forEach((q,i)=>{g+=`<text x="${x(900*i+450).toFixed(1)}" y="${T-4}" fill="#4F5C6B" font-size="9" text-anchor="middle">${q} quarto</text>`});
+  for(let i=0;i<=3;i++){const v=maxY*i/3;g+=`<line x1="${L}" y1="${y(v).toFixed(1)}" x2="${W-R}" y2="${y(v).toFixed(1)}" stroke="#141C25"/><text x="${L-6}" y="${(y(v)+3).toFixed(1)}" fill="#7C8996" font-size="9" text-anchor="end">${n0(v)}</text>`}
+  if(!sel.length){
+    g+=`<text x="${W/2}" y="${H/2}" fill="#4F5C6B" font-size="12" text-anchor="middle">Clicca un punteggio, o il nome di una squadra, per disegnare le partite</text>`;
+  }
+  const labels=[];
+  sel.forEach((s,i)=>{
+    const col=SELCOL[i%SELCOL.length];
+    // scala a gradini: i punti fantasy arrivano tutti insieme su una giocata
+    const gs=gst[s.p?s.p.nfl:'']||{};
+    // la linea si ferma al minuto di gioco: se la partita è in corso non arriva al 60'
+    const end=gs.state==='in'&&gs.el?Math.max(gs.el,s.c[s.c.length-1][0]):maxX;
+    let d=`M${L} ${y(0).toFixed(1)}`,prev=0;
+    s.c.forEach(e=>{d+=` L${x(e[0]).toFixed(1)} ${y(prev).toFixed(1)} L${x(e[0]).toFixed(1)} ${y(e[1]).toFixed(1)}`;prev=e[1]});
+    d+=` L${x(end).toFixed(1)} ${y(prev).toFixed(1)}`;
+    const st=(gst[s.p?s.p.nfl:'']||{}).state;
+    g+=`<path${st==='pre'?'':' class="drawline"'} d="${d}" fill="none" stroke="${col}" stroke-width="2.2" stroke-linejoin="round"${st==='pre'?' stroke-dasharray="5 4" opacity=".7"':''}/>`;
+    s.c.forEach((e,j)=>{
+      const jump=e[1]-(j?s.c[j-1][1]:0);
+      const big=jump>=4;
+      g+=`<circle cx="${x(e[0]).toFixed(1)}" cy="${y(e[1]).toFixed(1)}" r="${big?5:2.8}" fill="${col}" stroke="${big?'#0A0E13':'none'}" stroke-width="1.5"><title>${esc(s.p?s.p.name:'')} · ${Math.floor(e[0]/60)}' — ${n1(e[1])} punti (${jump>0?'+':''}${n1(jump)})${e[2]?'\n'+esc(e[2]):''}${e[3]?'\n'+esc(e[3]):''}</title></circle>`;
+    });
+    const last=s.c[s.c.length-1];
+    if(gs.state==='in')g+=`<circle cx="${x(end).toFixed(1)}" cy="${y(last[1]).toFixed(1)}" r="4" fill="#0A0E13" stroke="${col}" stroke-width="2"><title>partita in corso · ${esc(gs.detail||'')}</title></circle>`;
+    labels.push({y:y(last[1]),ex:x(end),ey:y(last[1]),col,
+      txt:(s.p?s.p.name:'').split(' ').slice(-1)[0]});
+  });
+  /* le etichette si spostano finché non smettono di accavallarsi, e hanno un
+     alone del colore dello sfondo per staccarsi dalle linee */
+  labels.sort((a,b)=>a.y-b.y);
+  for(let i=1;i<labels.length;i++)if(labels[i].y-labels[i-1].y<12)labels[i].y=labels[i-1].y+12;
+  const over=labels.length?labels[labels.length-1].y-(H-B-2):0;
+  if(over>0)labels.forEach(l=>l.y-=over);
+  labels.forEach(l=>{
+    const ly=Math.max(T+6,l.y);
+    g+=`<line x1="${l.ex.toFixed(1)}" y1="${l.ey.toFixed(1)}" x2="${(W-R+2).toFixed(1)}" y2="${ly.toFixed(1)}" stroke="${l.col}" stroke-width="1" opacity=".45"/>`;
+    g+=`<text x="${(W-R+6).toFixed(1)}" y="${(ly+3.5).toFixed(1)}" fill="${l.col}" font-size="10" font-weight="600">${esc(l.txt)}</text>`;
+  });
+  wrap.innerHTML=svgEl(W,H,g);
+}
+
+/* ================= SCAMBI ================= */
+const START={QB:1,RB:2,WR:2,TE:1,DST:1,K:1};
+function lineupValue(list){
+  const used=new Set();let tot=0;
+  const sorted=[...list].sort((a,b)=>basePPG(b)-basePPG(a));
+  SLOTS.forEach(([lab,el])=>{const p=sorted.find(x=>!used.has(x.id)&&el.includes(x.pos));if(p){used.add(p.id);tot+=basePPG(p)}});
+  return tot;
+}
+function rosterOfTeam(t){return POOL.filter(p=>p.own===t)}
+function tradeIdeas(rival,minGain){
+  const mineR=rosterOfTeam(MY).filter(p=>!['K','DST'].includes(p.pos));
+  const theirs=rosterOfTeam(rival).filter(p=>!['K','DST'].includes(p.pos));
+  const v0=lineupValue(rosterOfTeam(MY)),w0=lineupValue(rosterOfTeam(rival));
+  const all=[];
+  const val=(list,out,inn)=>lineupValue(list.filter(p=>!out.includes(p)).concat(inn));
+  mineR.forEach(a=>theirs.forEach(b=>{
+    const gMe=val(rosterOfTeam(MY),[a],[b])-v0, gThem=val(rosterOfTeam(rival),[b],[a])-w0;
+    all.push({give:[a],get:[b],gMe,gThem,min:Math.min(gMe,gThem)});
+  }));
+  /* due-per-uno: in una lega piccola si consolida, non si scambia alla pari */
+  const surplus=[...mineR].sort((x,y)=>basePPG(y)-basePPG(x)).slice(2,9);
+  const theirTop=[...theirs].sort((x,y)=>basePPG(y)-basePPG(x)).slice(0,6);
+  for(let i=0;i<surplus.length;i++)for(let j=i+1;j<surplus.length;j++)theirTop.forEach(b=>{
+    const a1=surplus[i],a2=surplus[j];
+    const gMe=val(rosterOfTeam(MY),[a1,a2],[b])-v0, gThem=val(rosterOfTeam(rival),[b],[a1,a2])-w0;
+    all.push({give:[a1,a2],get:[b],gMe,gThem,min:Math.min(gMe,gThem)});
+  });
+  const ok=all.filter(t=>t.gMe>=minGain&&t.gThem>=minGain).sort((x,y)=>y.min-x.min).slice(0,12);
+  if(ok.length)return{list:ok,fallback:false};
+  return{list:all.filter(t=>t.gMe>0).sort((x,y)=>(y.gMe+y.gThem)-(x.gMe+x.gThem)).slice(0,6),fallback:true};
+}
+function renderTrades(){
+  const sel=$('#tr-team');
+  if(!sel.options.length)sel.innerHTML=[1,2,4].map(t=>`<option value="${t}">${esc(TBY.get(t).name)}</option>`).join('');
+  if(!S2.trTeam)S2.trTeam=+sel.value||1; sel.value=S2.trTeam;
+  $('#tr-needs').innerHTML=`<thead><tr><th>Team</th>${['QB','RB','WR','TE','DST','K'].map(p=>`<th class="num">${p}</th>`).join('')}<th>Lettura</th></tr></thead><tbody>`+
+    [MY,1,2,4].filter((v,i,s)=>s.indexOf(v)===i).map(t=>{
+      const r=rosterOfTeam(t);
+      const cells=['QB','RB','WR','TE','DST','K'].map(pos=>{
+        const n=r.filter(p=>p.pos===pos).length,need=START[pos]+((pos==='RB'||pos==='WR')?0.5:0);
+        const col=n<need?'var(--offline)':n>need+1.5?'var(--live)':'var(--k-muted)';
+        return`<td class="num" style="color:${col}">${n}</td>`}).join('');
+      const surplus=['QB','RB','WR','TE'].filter(pos=>r.filter(p=>p.pos===pos).length>START[pos]+1.5);
+      const hole=['QB','RB','WR','TE'].filter(pos=>r.filter(p=>p.pos===pos).length<=START[pos]);
+      return`<tr class="${t===MY?'mine':''}"><td><b>${esc(TBY.get(t).name)}</b>${t===MY?' <span class="tag2">tu</span>':''}</td>${cells}
+        <td style="color:var(--k-muted)">${surplus.length?'gli avanza '+surplus.join(', '):''}${surplus.length&&hole.length?' · ':''}${hole.length?'corto di '+hole.join(', '):''}</td></tr>`}).join('')+'</tbody>';
+
+  const {list:ideas,fallback}=tradeIdeas(S2.trTeam,S2.trMin);
+  const nm=p=>`<span data-pid="${p.id}"><span class="pos pos-${p.pos}">${p.pos}</span> ${esc(p.name)}</span>`;
+  $('#tr-list').innerHTML=(fallback?`<p class="cn" style="color:var(--delayed);margin:0 0 8px">Nessuno scambio conviene a entrambi con questa soglia: qui sotto ci sono comunque le ipotesi migliori per te, ma ti servirà offrire qualcosa in più (o abbassare la soglia).</p>`:'')+
+    `<table class="antable"><thead><tr><th>Dai</th><th>Ricevi</th><th class="num">Tu</th><th class="num">Lui</th><th>Perché funziona</th></tr></thead><tbody>`+
+    (ideas.length?ideas.map(i=>{
+      const a=i.give[0],b=i.get[0],why=[];
+      if(i.give.length>1)why.push('due per uno: accorci la rosa ma alzi i titolari');
+      if(a.pos!==b.pos)why.push(`${i.give.map(x=>x.pos).join('+')} contro ${b.pos}: riempi un buco e cedi quello che ti avanza`);
+      const ia=injOf(b);if(ia&&ia.s)why.push(`attenzione: ${esc(b.name)} è ${ia.s}`);
+      const av=adv(b,26);if(av&&av.targetShare>=0.22)why.push(`${n0(av.targetShare*100)}% dei target della sua squadra`);
+      if(b.bye===a.bye)why.push('stesso bye, non cambia nulla sulle settimane scoperte');
+      if(i.gThem<=0)why.push('per lui è un passo indietro: serve un'+String.fromCharCode(39)+'aggiunta');
+      return`<tr><td>${i.give.map(nm).join('<br>')}</td><td>${i.get.map(nm).join('<br>')}</td>
+        <td class="num" style="color:${i.gMe>0?'var(--live)':'var(--offline)'}">${i.gMe>0?'+':''}${n1(i.gMe)}</td>
+        <td class="num" style="color:${i.gThem>0?'var(--k-muted)':'var(--offline)'}">${i.gThem>0?'+':''}${n1(i.gThem)}</td>
+        <td style="white-space:normal;max-width:40ch;color:var(--k-muted)">${why.join(' · ')||'migliora la formazione titolare'}</td></tr>`}).join('')
+      :'<tr><td colspan="5" style="color:var(--k-muted)">Nessuna ipotesi sensata con questa rosa.</td></tr>')+'</tbody></table>';
+}
+
+/* ================= STORICO ================= */
+function ptsWinsScatter(closed){
+  const COL={sommo:'#3CC7F5',oscurus:'#F47272',lasers:'#34D399',capi:'#F4A63B'};
+  const pts=[];
+  closed.forEach(y=>Object.entries(HI.seasons[y]).forEach(([k,v])=>pts.push({k,y,pf:v.ppg,w:v.w})));
+  const W=520,H=230,L=40,R=18,T=12,B=30;
+  const mnx=Math.min(...pts.map(p=>p.pf))*0.97,mxx=Math.max(...pts.map(p=>p.pf))*1.03;
+  const mny=Math.min(...pts.map(p=>p.w))-1,mxy=Math.max(...pts.map(p=>p.w))+1;
+  const X=v=>L+(v-mnx)/(mxx-mnx)*(W-L-R),Y=v=>H-B-(v-mny)/(mxy-mny)*(H-B-T);
+  let s='';
+  for(let i=0;i<=3;i++){const v=mny+(mxy-mny)*i/3;s+=`<line x1="${L}" y1="${Y(v)}" x2="${W-R}" y2="${Y(v)}" stroke="#1E2833"/><text x="${L-6}" y="${Y(v)+3}" fill="#7C8996" font-size="9" text-anchor="end">${n0(v)}</text>`}
+  for(let i=0;i<=3;i++){const v=mnx+(mxx-mnx)*i/3;s+=`<text x="${X(v)}" y="${H-B+14}" fill="#7C8996" font-size="9" text-anchor="middle">${n0(v)}</text>`}
+  // retta dei minimi quadrati: sopra si vince più di quanto dicano i punti
+  const n=pts.length,sx=pts.reduce((a,p)=>a+p.pf,0),sy=pts.reduce((a,p)=>a+p.w,0);
+  const sxy=pts.reduce((a,p)=>a+p.pf*p.w,0),sxx=pts.reduce((a,p)=>a+p.pf*p.pf,0);
+  const b1=(n*sxy-sx*sy)/(n*sxx-sx*sx),b0=(sy-b1*sx)/n;
+  s+=`<line x1="${X(mnx)}" y1="${Y(b0+b1*mnx)}" x2="${X(mxx)}" y2="${Y(b0+b1*mxx)}" stroke="#4A5866" stroke-dasharray="4 4"/>`;
+  pts.forEach(p=>{s+=`<circle cx="${X(p.pf).toFixed(1)}" cy="${Y(p.w).toFixed(1)}" r="${p.k==='sommo'?5.5:4}" fill="${COL[p.k]}" opacity="${p.k==='sommo'?1:.75}"><title>${esc(NAME[p.k])} ${p.y}: ${n1(p.pf)} punti a gara, ${p.w} vittorie</title></circle>`});
+  s+=`<text x="${(W+L)/2-10}" y="${H-4}" fill="#7C8996" font-size="9" text-anchor="middle">punti a gara</text>`;
+  s+=`<text x="${W-R}" y="${T+2}" fill="#7C8996" font-size="9" text-anchor="end">asse verticale: vittorie</text>`;
+  $('#hi-scatter').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Punti contro vittorie">${s}</svg>`;
+}
+function renderHistory(){
+  const years=Object.keys(HI.seasons).map(Number).sort();
+  const closed=years.filter(y=>y<2026);
+  const all={};
+  closed.forEach(y=>Object.entries(HI.seasons[y]).forEach(([k,v])=>{
+    const e=all[k]=all[k]||{w:0,l:0,pf:0,g:0,pw:0,pl:0,best:0,titles:0};
+    e.w+=v.w;e.l+=v.l;e.pf+=v.pf;e.g+=v.g;e.pw+=v.pw||0;e.pl+=v.pl||0;e.best=Math.max(e.best,v.best||0)}));
+  const order=Object.entries(all).sort((a,b)=>(b[1].w/(b[1].w+b[1].l))-(a[1].w/(a[1].w+a[1].l)));
+  $('#hi-strip').innerHTML=order.map(([k,v])=>`<div class="sc ${k==='sommo'?'p-RB':''}"><h4>${esc(NAME[k])}${k==='sommo'?' · tu':''}</h4>
+    <div class="kv"><span>record 2019-2025</span><b>${v.w}-${v.l}</b></div>
+    <div class="kv"><span>punti a gara</span><b>${n1(v.pf/Math.max(1,v.g))}</b></div>
+    <div class="kv"><span>playoff</span><b>${v.pw}-${v.pl}</b></div>
+    <div class="verd">Miglior settimana: ${n1(v.best)} punti.</div></div>`).join('');
+
+  $('#hi-table').innerHTML=`<thead><tr><th>Anno</th><th>Team</th><th class="num">W-L</th><th class="num">PF</th><th class="num">PA</th><th class="num">Ppg</th><th class="num">Top</th><th class="num">Playoff</th></tr></thead><tbody>`+
+    years.slice().reverse().flatMap(y=>Object.entries(HI.seasons[y]).sort((a,b)=>b[1].w-a[1].w||b[1].pf-a[1].pf)
+      .map(([k,v],i)=>`<tr class="${k==='sommo'?'mine':''}"><td>${i===0?`<b>${y}</b>`:''}</td><td>${i===0?'<span class="tag2 acc">1°</span> ':''}${esc(NAME[k])}</td>
+        <td class="num">${v.w}-${v.l}</td><td class="num">${n0(v.pf)}</td><td class="num">${n0(v.pa)}</td>
+        <td class="num">${n1(v.ppg)}</td><td class="num">${n1(v.best)}</td><td class="num">${v.pw||0}-${v.pl||0}</td></tr>`)).join('')+'</tbody>';
+
+  ptsWinsScatter(closed);
+  // punti a gara per stagione
+  const W=520,H=250,L=42,Rr=54,T=14,B=26;
+  const keys=Object.keys(all);
+  const vals=closed.flatMap(y=>keys.map(k=>(HI.seasons[y][k]||{}).ppg||0)).filter(v=>v>0);
+  const lo=Math.min(...vals)*0.96,hi=Math.max(...vals)*1.03;
+  const x=i=>L+i/(closed.length-1)*(W-L-Rr),y=v=>H-B-(v-lo)/(hi-lo)*(H-B-T);
+  const COL={sommo:'#3CC7F5',oscurus:'#F47272',lasers:'#34D399',capi:'#F4A63B'};
+  let g='';
+  for(let i=0;i<=3;i++){const v=lo+(hi-lo)*i/3;g+=`<line x1="${L}" y1="${y(v)}" x2="${W-Rr}" y2="${y(v)}" stroke="#1E2833"/><text x="${L-6}" y="${y(v)+3}" fill="#7C8996" font-size="9" text-anchor="end">${n0(v)}</text>`}
+  closed.forEach((yr,i)=>g+=`<text x="${x(i)}" y="${H-B+14}" fill="#7C8996" font-size="9" text-anchor="middle">${yr}</text>`);
+  keys.forEach(k=>{
+    const pts=closed.map((yr,i)=>({x:x(i),y:y((HI.seasons[yr][k]||{}).ppg||lo)}));
+    g+=`<path d="${pts.map((p,i)=>`${i?'L':'M'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ')}" fill="none" stroke="${COL[k]}" stroke-width="${k==='sommo'?2.6:1.8}"/>`;
+    pts.forEach(p=>g+=`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.6" fill="${COL[k]}"/>`);
+    const last=pts[pts.length-1];
+    g+=`<text x="${(last.x+6).toFixed(1)}" y="${(last.y+3).toFixed(1)}" fill="${COL[k]}" font-size="9.5" font-weight="600">${esc(NAME[k]).slice(0,8)}</text>`;
+  });
+  $('#hi-chart').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img">${g}</svg>`;
+  $('#hi-lg').innerHTML=keys.map(k=>`<span><i style="background:${COL[k]}"></i>${esc(NAME[k])}</span>`).join('');
+
+  $('#hi-h2h').innerHTML=`<thead><tr><th>Sfida</th><th class="num">Bilancio</th><th>Chi comanda</th></tr></thead><tbody>`+
+    HI.h2h.map(h=>{const lead=h.aw===h.bw?null:(h.aw>h.bw?h.a:h.b);
+      return`<tr class="${h.a==='sommo'||h.b==='sommo'?'mine':''}"><td>${esc(NAME[h.a])} · ${esc(NAME[h.b])}</td>
+        <td class="num">${h.aw}-${h.bw}</td><td style="color:${lead==='sommo'?'var(--live)':'var(--k-muted)'}">${lead?esc(NAME[lead]):'pari'}</td></tr>`}).join('')+'</tbody>';
+}
+
+/* ---------- wiring ---------- */
+document.addEventListener('click',e=>{
+  const c=e.target.closest('[data-curve]');
+  if(c){e.preventDefault();e.stopPropagation();toggleCurve(c.dataset.curve);return}
+  const t=e.target.closest('[data-team]');
+  if(t){e.preventDefault();e.stopPropagation();toggleTeam(+t.dataset.team)}},true);
+$('#tm-chart-clear').onclick=()=>{SEL=[];renderTeams()};
+function setTmWeek(d){
+  const av=WKS(),i=av.indexOf(TWK()),wk=av[Math.min(av.length-1,Math.max(0,(i<0?av.length-1:i)+d))];
+  if(wk===TWK())return;
+  S2.tmWk=wk===WK?null:wk;      // null = "segui la giornata in corso", anche quando ESPN avanza
+  SEL=[];renderTeams();
+}
+$('#tm-wk-prev').onclick=()=>setTmWeek(-1);
+$('#tm-wk-next').onclick=()=>setTmWeek(1);
+$('#tm-sort').onchange=e=>{S2.tmSort=e.target.value;renderTeams()};
+$('#tm-bench').onchange=e=>{S2.tmBench=e.target.checked;renderTeams()};
+$('#tr-team').onchange=e=>{S2.trTeam=+e.target.value;renderTrades()};
+$('#tr-min').onchange=e=>{S2.trMin=+e.target.value;renderTrades()};
+R.teams=renderTeams;R.matchup=renderMatchup;R.trades=renderTrades;R.history=renderHistory;
+const cur=(location.hash||'').slice(1);
+if(['matchup','trades','history','teams'].includes(cur))window.DWR_VIEW(cur);
+})();
+</script>

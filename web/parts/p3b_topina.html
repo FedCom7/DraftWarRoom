@@ -1,0 +1,67 @@
+<section id="topina" data-n="1b" data-t="La tua lega: Topina">
+  <h2>La tua lega: Topina <small>verificata il 20/09/2026</small></h2>
+  <p>Ho interrogato direttamente ESPN con il league ID trovato in <code>Topina/scraper/espn_config.json</code>. Tutto ciò che segue è <span class="tag v">VERIFIED</span>: viene dalla risposta reale di <code>?view=mSettings&amp;view=mTeam&amp;view=mDraftDetail&amp;view=mRoster</code>. Nessun cookie: la lega è pubblica e risponde senza autenticazione.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Impostazione</th><th>Valore reale</th><th>Cosa comporta</th></tr></thead>
+    <tbody>
+      <tr><td>Nome e ID</td><td><b>Topina</b> · <code>leagueId 1948241900</code> · stagione 2026</td><td>Non serve chiedere nulla all'utente: la draft room si apre da questo ID</td></tr>
+      <tr><td>Visibilità</td><td><code>isPublic: true</code></td><td><b>Niente cookie, niente vault KMS, niente flusso “Connect ESPN”</b> nell'MVP</td></tr>
+      <tr><td>Team</td><td>4: <code>1 Oscurus</code>, <code>2 lasers</code>, <code>3 Sommo</code>, <code>4 Capi dei Pianeti</code></td><td>Board a 4 colonne: sta tutta a schermo, senza scroll orizzontale</td></tr>
+      <tr><td>La tua squadra</td><td>member <code>FComerio_3</code> → SWID <code>{701238FB-…}</code> → <b>team 3 “Sommo”</b></td><td>Il riconoscimento automatico funziona anche senza login: <code>owners[]</code> contiene il SWID</td></tr>
+      <tr><td>Tipo di draft</td><td><code>SNAKE</code> · <code>orderType: MANUAL</code> · <code>pickOrder: [3, 1, 2, 4]</code></td><td>Hai la <b>1.01</b> e poi 2.04, 3.01, 4.04… Il tuo ritmo è a coppie: due pick vicine e poi una lunga attesa</td></tr>
+      <tr><td>Round e pick</td><td>15 round × 4 team = <b>60 pick</b></td><td>Si draftano solo 60 giocatori su ~240 rilevanti: il pool resta profondissimo</td></tr>
+      <tr><td>Tempo per pick</td><td><code>timePerSelection: 120</code></td><td>2 minuti: il countdown stimato ha molto margine e il polling a 2 s è più che sufficiente</td></tr>
+      <tr><td>Scoring</td><td><code>H2H_POINTS</code>, <code>playerRankType: PPR</code> · ricezione 1,0 · yd ricezione e corsa 0,1 · yd passaggio 0,04 · TD passaggio 4 · intercetto −2 (38 voci)</td><td>Le proiezioni si prendono già convertite nello scoring di Topina da <code>kona_player_info</code> della tua lega</td></tr>
+      <tr><td>Slot titolari</td><td>QB 1 · RB 2 · <b>RB/WR 1</b> · WR 2 · TE 1 · D/ST 1 · K 1 · BE 6 · IR 1</td><td>Il FLEX è <b>RB/WR</b>, i TE ne sono esclusi: cambia il replacement level e quindi il VORP</td></tr>
+      <tr><td>Limiti di posizione</td><td>QB 4 · RB 8 · WR 8 · TE 3 · K 3 · D/ST 3</td><td>Vincoli da rispettare nei suggerimenti e nella simulazione degli avversari</td></tr>
+      <tr><td>Draft 2026</td><td><code>drafted: true</code>, <code>completeDate</code> = 09/09/2026 22:54, 60 pick, <b>una sola autopick</b></td><td>La draft di quest'anno è finita, quindi la prossima è verso settembre 2027: hai circa un anno di margine</td></tr>
+      <tr><td>Stagioni precedenti</td><td><code>previousSeasons: [2019 … 2025]</code>, servite da <code>/leagueHistory/{id}?seasonId=YYYY</code></td><td>Come già fa il tuo scraper Topina. Utile per l'analisi storica, non per la draft live</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout"><p><b>Riuso da Topina.</b> <code>scraper/espn/client.py</code> e <code>config.py</code> contengono già host, gestione dei <code>view</code>, retry, errore 401 e il ramo <code>leagueHistory</code>. La logica è la stessa che serve qui: conviene portarla in TypeScript come <code>ESPNFantasyProvider</code> (una sola fonte di verità) e lasciare allo scraper Python il compito storico, oppure tenere il Python e far parlare i due servizi via database.</p></div>
+  <h3>Isolamento da Topina</h3>
+  <p>Draft War Room è un progetto <b>separato in tutto</b>: nessuna lettura a runtime da Topina, nessun suo file derivato, nessun import di suo codice, nessun accesso al suo Firebase. Le sorgenti pubbliche vengono interrogate da script di questo progetto (<code>scripts/fetch_sources.py</code>) e tutti i numeri sono ricalcolati da <code>scripts/build_console.py</code>.</p>
+  <div class="tw"><table>
+    <thead><tr><th>Dato</th><th>Da dove arriva qui</th><th>Chi lo elabora</th></tr></thead>
+    <tbody>
+      <tr><td>Lega, roster, draft, calendario, proiezioni, ADP ESPN, infortuni ESPN</td><td>API ESPN v3 (lega pubblica, nessun cookie)</td><td>Script di questo progetto</td></tr>
+      <tr><td>Utilizzo, quote di reparto, snap, tabellini settimanali, statistiche di squadra, bollettini infortuni</td><td>Release pubbliche di nflverse su GitHub</td><td>Scaricate e aggregate qui</td></tr>
+      <tr><td>Next Gen Stats (separazione, cushion, YAC oltre l'atteso, RYOE, CPOE, tempo di lancio)</td><td>nflverse, file multi-anno <code>ngs_*.csv.gz</code></td><td>Qui: filtrati per stagione e uniti al resto</td></tr>
+      <tr><td>Risultati e punteggi NFL</td><td><code>nflverse/nfldata</code> (games.csv)</td><td>Qui: punti fatti e subiti, rank d'attacco e difesa</td></tr>
+      <tr><td>ADP di mercato e deviazione standard, anche storici</td><td>API di Fantasy Football Calculator</td><td>Qui: anticipo sul mercato dei manager</td></tr>
+      <tr><td>Età, esperienza, depth chart</td><td>API pubblica di Sleeper</td><td>Qui</td></tr>
+      <tr><td>Corrispondenza fra gli id (ESPN, nflverse, Sleeper)</td><td>DynastyProcess <code>db_playerids.csv</code></td><td>Qui</td></tr>
+      <tr><td><b>Storico 2019-2025</b> (schieramenti settimanali e draft)</td><td><b>Copia una tantum</b> in <code>data/vendor/</code>, con la sua provenienza scritta nel README</td><td>Classifiche, scontri diretti e tratti dei manager sono <b>ricalcolati qui</b>: nessun modello altrui è stato copiato</td></tr>
+    </tbody>
+  </table></div>
+  <div class="callout warn"><p><b>Perché lo storico è una copia e non un download.</b> ESPN ospita la lega solo dal 2026 e risponde <b>404</b> per le stagioni precedenti; NFL.com, dove la lega viveva prima, non è più interrogabile. Quei sette anni sono chiusi e non cambieranno più, quindi una copia statica è il modo corretto di conservarli. Da lì in avanti ogni elaborazione è codice di questo progetto.</p></div>
+  <div class="callout"><p><b>Next Gen Stats:</b> nflverse non pubblica più i file per singolo anno, ma quelli multi-anno compressi (<code>ngs_receiving.csv.gz</code> e simili) contengono anche 2025 e 2026. Separazione, cushion, YAC oltre l'atteso, RYOE, CPOE, tempo di lancio e aggressività arrivano da lì, scaricati da questo progetto: 143 giocatori coperti sul 2026, cioè tutti quelli con volume sufficiente.</p></div>
+
+  <h3>Cosa cambia perché è solo per te (non un SaaS)</h3>
+  <div class="tw"><table>
+    <thead><tr><th>Componente</th><th>Versione SaaS</th><th>Versione personale (consigliata)</th></tr></thead>
+    <tbody>
+      <tr><td>Autenticazione</td><td>Auth.js, magic link, multi-tenant</td><td><b>Nessun login</b>, oppure una password singola in una variabile d'ambiente. Nessun cookie ESPN da custodire: la lega è pubblica</td></tr>
+      <tr><td>Custodia credenziali</td><td>Envelope encryption con KMS</td><td><b>Non serve</b>. Se un anno la lega diventasse privata, i cookie andrebbero in una variabile d'ambiente del solo backend</td></tr>
+      <tr><td>Tenant isolation, RLS, rate limit per utente</td><td>Obbligatori</td><td>Non applicabili. Resta sensata una rate limit verso ESPN, per non farsi bloccare</td></tr>
+      <tr><td>Infrastruttura</td><td>Vercel + 2 worker + 2 gateway + Neon + Upstash</td><td><b>Un solo processo Node</b> (Fastify) che fa polling, serve l'SSE e ospita la UI buildata. Una macchina Fly.io da 256 MB, oppure il Mac di casa con Tailscale</td></tr>
+      <tr><td>Database</td><td>PostgreSQL + Prisma</td><td><b>SQLite</b> con Prisma (stesso schema, stesso codice) oppure Postgres se lo vuoi già pronto per il futuro. Un lease Redis non serve: c'è un solo processo</td></tr>
+      <tr><td>Realtime</td><td>Redis Streams + gateway separato</td><td>Event log nella tabella <code>SyncEvent</code> e broadcast in memoria. <code>Last-Event-ID</code> funziona identico leggendo da SQLite</td></tr>
+      <tr><td>Aspetti legali</td><td>Revisione ToS necessaria</td><td>Uso personale, lega pubblica, una richiesta ogni 2 secondi per poche ore all'anno: rischio molto basso. Resta vietato ridistribuire i dati ESPN</td></tr>
+      <tr><td>Osservabilità</td><td>Grafana, Prometheus, Sentry</td><td>Log su file in formato JSON più il pannello “event stream” già presente nella console</td></tr>
+    </tbody>
+  </table></div>
+  <p>Il risultato: <b>l'MVP si riduce a un solo servizio e una sola pagina</b>, e tutta la parte difficile resta quella che conta davvero, cioè il sync engine con diff, idempotenza, riconciliazione e stato di sincronizzazione onesto. Le sezioni successive descrivono la versione completa: ogni volta che una scelta è sovradimensionata per te, questa tabella dice cosa togliere.</p>
+
+  <h3>Strategia in una lega da 4 team: qui cambia tutto</h3>
+  <p>Con 4 team la matematica del fantasy football classico si ribalta, e i consigli “da internet” diventano fuorvianti:</p>
+  <ul>
+    <li><b>L'ADP pubblico è quasi inutile.</b> È calcolato su leghe da 10 o 12 team. Da te i primi 60 nomi non spariscono affatto nello stesso ordine: la probabilità che un giocatore sia ancora disponibile alla tua prossima pick va stimata su <b>quante pick passano</b> (solo 3 tra una tua scelta e l'altra, o addirittura 0 nel turno di ritorno) e sui reali bisogni di tre soli avversari, che puoi modellare quasi esattamente.</li>
+    <li><b>Il replacement level è altissimo.</b> Con 4 QB titolari, il QB numero 5 del ranking è già “panchina”: prendere un QB presto regala pochissimo vantaggio. Lo stesso per i TE. Il valore si concentra dove gli slot sono tanti: RB e WR (2+2 più il FLEX RB/WR).</li>
+    <li><b>K e D/ST sono intercambiabili.</b> Vanno presi negli ultimi due round, sempre.</li>
+    <li><b>I waiver contano più della draft.</b> Con 60 giocatori draftati su centinaia, ogni settimana resta disponibile talento reale. La draft serve a non sbagliare i primi 6 round; il resto si corregge in stagione. Un futuro “waiver assistant” avrebbe qui più valore del draft assistant.</li>
+    <li><b>Il rischio vero sono i bye week e gli infortuni</b>, perché con 6 panchinari e 9 titolari una settimana con tre bye sovrapposti si paga subito. Il modello penalizza quindi la concentrazione dei bye più di quanto farebbe in una lega da 12.</li>
+    <li><b>Turno di ritorno ravvicinato:</b> con la 1.01 fai 1.01 e 2.04, cioè due pick separate da 6 scelte; poi 3.01 arriva subito dopo la 2.04. In pratica scegli a coppie: conviene ragionare su <em>combinazioni</em> di due giocatori, non su una pick alla volta. Il motore lo tiene in conto usando come orizzonte la tua prossima pick reale, non un numero fisso.</li>
+  </ul>
+  <p>La console demo usa esattamente questi parametri: 4 team con i nomi reali, pickOrder <code>[3,1,2,4]</code>, 15 round, 120 secondi, PPR, FLEX RB/WR, e i ranking, ADP e proiezioni reali della lega Topina. Con il pulsante <b>“Replay draft 2026”</b> rigioca le 60 pick vere del 9 settembre 2026, così puoi vedere come si sarebbe comportata la draft room durante la tua draft.</p>
+</section>

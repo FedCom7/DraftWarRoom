@@ -1,0 +1,374 @@
+{
+  "season": "2021",
+  "scraped_at": "2026-02-08T12:17:35.498950",
+  "teams": {
+    "riccardo97com": [
+      {
+        "pick": 1,
+        "name": "Christian McCaffrey",
+        "position": "RB",
+        "nfl_team": "CAR"
+      },
+      {
+        "pick": 8,
+        "name": "Davante Adams",
+        "position": "WR",
+        "nfl_team": "LV"
+      },
+      {
+        "pick": 9,
+        "name": "Tyreek Hill",
+        "position": "WR",
+        "nfl_team": "MIA"
+      },
+      {
+        "pick": 16,
+        "name": "Austin Ekeler",
+        "position": "RB",
+        "nfl_team": "LAC"
+      },
+      {
+        "pick": 17,
+        "name": "A.J. Brown",
+        "position": "WR",
+        "nfl_team": "PHI"
+      },
+      {
+        "pick": 24,
+        "name": "Chris Carson",
+        "position": "RB",
+        "nfl_team": "SEA"
+      },
+      {
+        "pick": 25,
+        "name": "George Kittle",
+        "position": "TE",
+        "nfl_team": "SF"
+      },
+      {
+        "pick": 32,
+        "name": "Tyler Lockett",
+        "position": "WR",
+        "nfl_team": "SEA"
+      },
+      {
+        "pick": 33,
+        "name": "David Montgomery",
+        "position": "RB",
+        "nfl_team": "CHI"
+      },
+      {
+        "pick": 40,
+        "name": "Aaron Rodgers",
+        "position": "QB",
+        "nfl_team": "GB"
+      },
+      {
+        "pick": 41,
+        "name": "Robert Woods",
+        "position": "WR",
+        "nfl_team": "TEN"
+      },
+      {
+        "pick": 48,
+        "name": "Michael Thomas",
+        "position": "WR",
+        "nfl_team": "NO"
+      },
+      {
+        "pick": 49,
+        "name": "Mike Evans",
+        "position": "WR",
+        "nfl_team": "TB"
+      },
+      {
+        "pick": 56,
+        "name": "Jason Sanders",
+        "position": "K",
+        "nfl_team": "MIA"
+      },
+      {
+        "pick": 57,
+        "name": "Green Bay Packers",
+        "position": "DEF",
+        "nfl_team": ""
+      }
+    ],
+    "Capi dei Pianeti": [
+      {
+        "pick": 2,
+        "name": "Alvin Kamara",
+        "position": "RB",
+        "nfl_team": "NO"
+      },
+      {
+        "pick": 7,
+        "name": "Travis Kelce",
+        "position": "TE",
+        "nfl_team": "KC"
+      },
+      {
+        "pick": 10,
+        "name": "Stefon Diggs",
+        "position": "WR",
+        "nfl_team": "BUF"
+      },
+      {
+        "pick": 15,
+        "name": "Justin Jefferson",
+        "position": "WR",
+        "nfl_team": "MIN"
+      },
+      {
+        "pick": 18,
+        "name": "Aaron Jones",
+        "position": "RB",
+        "nfl_team": "GB"
+      },
+      {
+        "pick": 23,
+        "name": "Saquon Barkley",
+        "position": "RB",
+        "nfl_team": "NYG"
+      },
+      {
+        "pick": 26,
+        "name": "Nick Chubb",
+        "position": "RB",
+        "nfl_team": "CLE"
+      },
+      {
+        "pick": 31,
+        "name": "CeeDee Lamb",
+        "position": "WR",
+        "nfl_team": "DAL"
+      },
+      {
+        "pick": 34,
+        "name": "Keenan Allen",
+        "position": "WR",
+        "nfl_team": "LAC"
+      },
+      {
+        "pick": 39,
+        "name": "Lamar Jackson",
+        "position": "QB",
+        "nfl_team": "BAL"
+      },
+      {
+        "pick": 42,
+        "name": "Russell Wilson",
+        "position": "QB",
+        "nfl_team": "DEN"
+      },
+      {
+        "pick": 47,
+        "name": "Joe Mixon",
+        "position": "RB",
+        "nfl_team": "CIN"
+      },
+      {
+        "pick": 50,
+        "name": "Terry McLaurin",
+        "position": "WR",
+        "nfl_team": "WAS"
+      },
+      {
+        "pick": 55,
+        "name": "Tampa Bay Buccaneers",
+        "position": "DEF",
+        "nfl_team": ""
+      },
+      {
+        "pick": 58,
+        "name": "Justin Tucker",
+        "position": "K",
+        "nfl_team": "BAL"
+      }
+    ],
+    "lasers": [
+      {
+        "pick": 3,
+        "name": "DeAndre Hopkins",
+        "position": "WR",
+        "nfl_team": "ARI"
+      },
+      {
+        "pick": 6,
+        "name": "Ezekiel Elliott",
+        "position": "RB",
+        "nfl_team": "DAL"
+      },
+      {
+        "pick": 11,
+        "name": "Patrick Mahomes",
+        "position": "QB",
+        "nfl_team": "KC"
+      },
+      {
+        "pick": 14,
+        "name": "DK Metcalf",
+        "position": "WR",
+        "nfl_team": "SEA"
+      },
+      {
+        "pick": 19,
+        "name": "Jonathan Taylor",
+        "position": "RB",
+        "nfl_team": "IND"
+      },
+      {
+        "pick": 22,
+        "name": "Adam Thielen",
+        "position": "WR",
+        "nfl_team": "MIN"
+      },
+      {
+        "pick": 27,
+        "name": "Mark Andrews",
+        "position": "TE",
+        "nfl_team": "BAL"
+      },
+      {
+        "pick": 30,
+        "name": "Odell Beckham Jr.",
+        "position": "WR",
+        "nfl_team": "LA"
+      },
+      {
+        "pick": 35,
+        "name": "Younghoe Koo",
+        "position": "K",
+        "nfl_team": "ATL"
+      },
+      {
+        "pick": 38,
+        "name": "Dak Prescott",
+        "position": "QB",
+        "nfl_team": "DAL"
+      },
+      {
+        "pick": 43,
+        "name": "Josh Jacobs",
+        "position": "RB",
+        "nfl_team": "LV"
+      },
+      {
+        "pick": 46,
+        "name": "Antonio Brown",
+        "position": "WR",
+        "nfl_team": ""
+      },
+      {
+        "pick": 51,
+        "name": "Tom Brady",
+        "position": "QB",
+        "nfl_team": "TB"
+      },
+      {
+        "pick": 54,
+        "name": "Los Angeles Rams",
+        "position": "DEF",
+        "nfl_team": ""
+      },
+      {
+        "pick": 59,
+        "name": "Antonio Gibson",
+        "position": "RB",
+        "nfl_team": "WAS"
+      }
+    ],
+    "FedCom": [
+      {
+        "pick": 4,
+        "name": "Dalvin Cook",
+        "position": "RB",
+        "nfl_team": "MIN"
+      },
+      {
+        "pick": 5,
+        "name": "Derrick Henry",
+        "position": "RB",
+        "nfl_team": "TEN"
+      },
+      {
+        "pick": 12,
+        "name": "Calvin Ridley",
+        "position": "WR",
+        "nfl_team": "ATL"
+      },
+      {
+        "pick": 13,
+        "name": "Darren Waller",
+        "position": "TE",
+        "nfl_team": "LV"
+      },
+      {
+        "pick": 20,
+        "name": "Julio Jones",
+        "position": "WR",
+        "nfl_team": "TEN"
+      },
+      {
+        "pick": 21,
+        "name": "Josh Allen",
+        "position": "QB",
+        "nfl_team": "BUF"
+      },
+      {
+        "pick": 28,
+        "name": "Najee Harris",
+        "position": "RB",
+        "nfl_team": "PIT"
+      },
+      {
+        "pick": 29,
+        "name": "Allen Robinson",
+        "position": "WR",
+        "nfl_team": "LA"
+      },
+      {
+        "pick": 36,
+        "name": "Amari Cooper",
+        "position": "WR",
+        "nfl_team": "CLE"
+      },
+      {
+        "pick": 37,
+        "name": "Kyler Murray",
+        "position": "QB",
+        "nfl_team": "ARI"
+      },
+      {
+        "pick": 44,
+        "name": "Diontae Johnson",
+        "position": "WR",
+        "nfl_team": "PIT"
+      },
+      {
+        "pick": 45,
+        "name": "Kyle Pitts",
+        "position": "TE",
+        "nfl_team": "ATL"
+      },
+      {
+        "pick": 52,
+        "name": "D'Andre Swift",
+        "position": "RB",
+        "nfl_team": "DET"
+      },
+      {
+        "pick": 53,
+        "name": "Pittsburgh Steelers",
+        "position": "DEF",
+        "nfl_team": ""
+      },
+      {
+        "pick": 60,
+        "name": "Rodrigo Blankenship",
+        "position": "K",
+        "nfl_team": "IND"
+      }
+    ]
+  }
+}

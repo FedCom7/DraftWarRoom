@@ -1,0 +1,89 @@
+name: Rigenera e pubblica il sito
+
+# Rifà tutta la pipeline (fetch → calcolo → esportazione → pagina web) e pubblica
+# web/ su GitHub Pages. Il live delle partite NON passa da qui: sul sito lo
+# calcola il browser chiamando ESPN ogni 30 secondi (web/live.js). Questa Action
+# aggiorna solo la parte statica: storico, metriche, mercato, giornata nuova.
+#
+# Il cron di GitHub parte spesso con ore di ritardo: per questo il giro del
+# martedì (giornata nuova dopo il Monday Night) ha due orari.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '20 4 * * 2'    # martedì mattina: chiude la giornata e apre la nuova
+    - cron: '0 11 * * 2'    # martedì, rete di sicurezza se il primo è in ritardo
+    - cron: '0 9 * * 0,1,3,4,5,6'   # ogni giorno: infortuni, mercato, proiezioni
+
+permissions:
+  contents: write     # per salvare l'archivio della stagione (data/history)
+  pages: write
+  id-token: write
+
+concurrency:
+  group: sito
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Pillow per ridurre le foto
+        run: pip install pillow
+
+      # data/raw non sta nel repo (176 MB): la cache evita di riscaricare ogni
+      # volta le giornate chiuse. Chiave nuova a ogni giro, si riparte dall'ultima.
+      - name: Cache delle sorgenti
+        uses: actions/cache@v4
+        with:
+          path: data/raw
+          key: raw-${{ github.run_id }}
+          restore-keys: raw-
+
+      - name: Scarica le sorgenti
+        run: python scripts/fetch_sources.py
+      - name: Calcola
+        run: python scripts/build_console.py
+      - name: Esporta
+        run: python scripts/export_console_assets.py
+      - name: Foto dei giocatori nuovi
+        run: python scripts/fetch_images.py
+        continue-on-error: true   # senza foto la pagina funziona lo stesso
+      - name: Pagina web
+        run: python scripts/build_page.py --mode web
+
+      # l'analisi di stagione e le foto nuove restano nel repo: la draft room
+      # dell'anno dopo legge data/history/season_{anno}.json
+      - name: Salva archivio stagione e foto
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/history/season_*.json web/img
+          if git diff --staged --quiet; then
+            echo "Niente di nuovo da salvare."
+          else
+            git commit -m "chore(data): archivio stagione [skip ci]"
+            git push
+          fi
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: web
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
