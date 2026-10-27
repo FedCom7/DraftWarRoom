@@ -1,0 +1,112 @@
+<style>
+/* ---------- partite NFL: un riquadro per partita (stesso sistema visivo della console) */
+.ng-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:10px;align-items:start}
+.ng-card{background:var(--k-p);border:1px solid var(--k-line);border-radius:10px;border-top:3px solid var(--k-line);min-width:0;overflow:hidden}
+.ng-card.is-live{border-top-color:var(--live)}
+.ng-card.is-post{border-top-color:#3A4757}
+.ng-card.has-s{box-shadow:inset 3px 0 0 var(--hl-s)}
+.ng-card.has-b{box-shadow:inset 3px 0 0 var(--hl-b)}
+/* i miei, quando li evidenzi: titolari e panchina in due colori */
+#view-nfl .console{--hl-s:var(--k-me);--hl-b:#F472B6}
+.ng-hl{display:flex;gap:8px;align-items:center;font-size:11.5px;color:var(--k-muted)}
+.ng-hl i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.ng-top{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;padding:10px 12px 8px;align-items:center}
+.ng-teams{display:flex;flex-direction:column;gap:4px;min-width:0}
+.ng-tm{display:grid;grid-template-columns:26px minmax(0,1fr) auto;gap:8px;align-items:center}
+.ng-tm img{width:26px;height:26px;object-fit:contain}
+.ng-tm .nm{font:700 19px/1 var(--display);letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ng-tm .nm small{font:500 11px var(--sans);color:var(--k-muted);letter-spacing:0;margin-left:6px}
+.ng-tm .scr{font:700 30px/1 var(--display);font-variant-numeric:tabular-nums;text-align:right;min-width:40px}
+.ng-tm.lose .scr,.ng-tm.lose .nm{color:var(--k-muted)}
+.ng-tm .ball{display:inline-block;width:9px;height:6px;border-radius:50%;background:#C98A4B;margin-left:6px;vertical-align:2px}
+.ng-st{text-align:right;display:flex;flex-direction:column;gap:3px;align-items:flex-end;min-width:86px}
+.ng-st b{font:700 15px/1 var(--display);letter-spacing:.05em;text-transform:uppercase}
+.ng-card.is-live .ng-st b{color:var(--live)}
+.ng-st small{font:500 11px var(--mono);color:var(--k-muted)}
+.ng-sit{display:flex;gap:8px;align-items:center;padding:6px 12px;border-top:1px solid var(--k-line);background:var(--k-p2);font-size:12px}
+.ng-sit .dd{font:600 12px var(--mono);white-space:nowrap}
+.ng-sit .lp{color:var(--k-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ng-lines{width:100%;border-collapse:collapse;font:500 11px var(--mono);color:var(--k-muted)}
+.ng-lines td,.ng-lines th{padding:3px 6px;text-align:right;font-weight:500}
+.ng-lines th{font-size:10px;letter-spacing:.06em}
+.ng-lines td:first-child,.ng-lines th:first-child{text-align:left;padding-left:12px}
+.ng-lines td:last-child{color:var(--k-ink);font-weight:700;padding-right:12px}
+.ng-sec{border-top:1px solid var(--k-line);padding:8px 12px 10px}
+.ng-sec>h4{display:flex;align-items:center;gap:8px;margin:0 0 6px;font:600 10.5px var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--k-muted)}
+.ng-sec>h4 .r{margin-left:auto;display:flex;gap:3px;text-transform:none;letter-spacing:0}
+.ng-sec>h4 .r button{padding:2px 8px;font-size:11px}
+.ng-sc{display:grid;grid-template-columns:52px 38px minmax(0,1fr) 44px;gap:6px;align-items:baseline;font-size:12px;padding:2px 0}
+.ng-sc .q{font:500 10.5px var(--mono);color:var(--k-muted)}
+.ng-sc .k{font:700 10px var(--mono);text-align:center;border-radius:3px;padding:2px 0;background:var(--k-p2);color:var(--k-ink)}
+.ng-sc .k.td{background:color-mix(in srgb,var(--k-y) 22%,transparent);color:var(--k-y)}
+.ng-sc .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ng-sc .t b{font-weight:600}
+.ng-sc .s{font:600 11px var(--mono);text-align:right;color:var(--k-muted);font-variant-numeric:tabular-nums}
+.ng-more{background:none!important;border:0!important;color:var(--k-muted)!important;padding:2px 0!important;font-size:11px!important;text-decoration:underline dotted}
+.ng-side+.ng-side{margin-top:8px}
+.ng-side>.hd{display:flex;align-items:center;gap:6px;font:700 13px/1 var(--display);letter-spacing:.05em;margin-bottom:3px}
+.ng-side>.hd img{width:16px;height:16px;object-fit:contain}
+.ng-side>.hd small{margin-left:auto;font:500 10.5px var(--mono);color:var(--k-muted);letter-spacing:0}
+.ng-u{display:grid;grid-template-columns:minmax(0,1fr) 92px 112px 38px;gap:8px;align-items:center;font-size:12px;padding:2px 0}
+.ng-u.hd2{font:600 9.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:#5E6B79;padding:0}
+.ng-u .n{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:flex;align-items:center;gap:5px}
+.ng-u .n .p{font:700 8.5px/1 var(--mono);border-radius:3px;color:#0B0F14;padding:2px 3px;flex:none}
+.ng-u .n .o{font:600 9px/1 var(--mono);border-radius:3px;padding:2px 4px;background:var(--k-p2);color:var(--k-muted);flex:none}
+.ng-u .n .o.me{background:color-mix(in srgb,var(--k-me) 20%,transparent);color:var(--k-me)}
+.ng-u.hl-s,.ng-u.hl-b{border-radius:4px;margin:0 -4px;padding:2px 4px}
+.ng-u.hl-s{background:color-mix(in srgb,var(--hl-s) 13%,transparent);box-shadow:inset 2px 0 0 var(--hl-s)}
+.ng-u.hl-b{background:color-mix(in srgb,var(--hl-b) 13%,transparent);box-shadow:inset 2px 0 0 var(--hl-b)}
+.ng-u.hl-s .n>span:last-child{color:var(--hl-s);font-weight:600}
+.ng-u.hl-b .n>span:last-child{color:var(--hl-b);font-weight:600}
+.ng-u .b{position:relative;height:14px;background:var(--k-p2);border-radius:3px;overflow:hidden}
+.ng-u .b i{position:absolute;left:0;top:0;bottom:0;background:#34506E;border-radius:3px}
+.ng-u .b i.c{background:var(--k-me);opacity:.9}
+.ng-u.hl-s .b i:not(.c){background:color-mix(in srgb,var(--hl-s) 40%,#10161E)}
+.ng-u.hl-b .b i:not(.c){background:color-mix(in srgb,var(--hl-b) 40%,#10161E)}
+.ng-u.hl-b .b i.c{background:var(--hl-b)}
+.ng-u .b u{position:absolute;top:0;bottom:0;width:2px;background:var(--k-y);text-decoration:none}
+.ng-u .b em{position:absolute;right:4px;top:0;font:700 10px/14px var(--mono);font-style:normal;color:var(--k-ink)}
+.ng-u .v{font:500 11px var(--mono);font-variant-numeric:tabular-nums;color:var(--k-ink);display:flex;gap:6px;justify-content:flex-end;white-space:nowrap}
+.ng-u .v .z{color:#4F5C6B}
+.ng-u .pt{font:700 12px var(--mono);text-align:right;font-variant-numeric:tabular-nums}
+.ng-u .pt.na{color:#4F5C6B;font-weight:400}
+.ng-pre{display:grid;grid-template-columns:auto 1fr;gap:3px 12px;font-size:12px}
+.ng-pre span{color:var(--k-muted)}
+.ng-pre b{font-weight:600}
+.ng-ours{display:flex;flex-wrap:wrap;gap:4px 10px;font-size:12px}
+.ng-ours span{white-space:nowrap}
+.ng-ours b{font:700 12px var(--mono)}
+.ng-ours .o{font:600 9px var(--mono);color:var(--k-muted);margin-right:3px}
+.ng-ours .o.me{color:var(--k-me)}
+.ng-ours .hl-s,.ng-ours .hl-b{border-radius:4px;padding:1px 5px}
+.ng-ours .hl-s{background:color-mix(in srgb,var(--hl-s) 16%,transparent)}
+.ng-ours .hl-s [data-pid]{color:var(--hl-s);font-weight:600}
+.ng-ours .hl-b{background:color-mix(in srgb,var(--hl-b) 16%,transparent)}
+.ng-ours .hl-b [data-pid]{color:var(--hl-b);font-weight:600}
+.ng-empty{font-size:12px;color:var(--k-muted);padding:16px;text-align:center}
+.ng-seg{display:flex;gap:3px}
+@media (max-width:520px){
+  .ng-grid{grid-template-columns:1fr}
+  .ng-u{grid-template-columns:minmax(0,1fr) 64px 96px 34px;gap:6px}
+  .ng-sc{grid-template-columns:46px 34px minmax(0,1fr) 40px}
+}
+</style>
+<div id="view-nfl" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2 id="ng-title">Partite NFL</h2><p>Un riquadro per partita, con quelle in corso in testa: punteggio, quarto e cronometro, chi ha la palla, chi ha segnato e come si dividono i palloni. La <b>quota target</b> è la parte dei passaggi della squadra lanciata verso quel giocatore (la barra), con la parte azzurra per le ricezioni e la tacca gialla sulla sua media della stagione. Dati dal tabellino ESPN, ogni 30 secondi mentre si gioca.</p></div>
+  <div class="an-bar">
+    <span class="wkpick">Giornata
+      <button id="ng-wk-prev" title="giornata precedente">◀</button><b id="ng-wk-lbl">—</b><button id="ng-wk-next" title="giornata successiva">▶</button></span>
+    <span class="ng-seg" id="ng-filter">
+      <button data-ngf="all" class="on">Tutte</button><button data-ngf="live">In corso</button><button data-ngf="mine">Con i tuoi</button></span>
+    <span class="ng-seg" id="ng-use">
+      <button data-ngu="tgt" class="on">Target</button><button data-ngu="rush">Corse</button><button data-ngu="pass">Passaggi</button></span>
+    <button id="ng-hl" aria-pressed="false" title="evidenzia i giocatori della tua squadra">★ Evidenzia i miei</button>
+    <span class="ng-hl" id="ng-hl-lg" hidden><span><i style="background:var(--hl-s)"></i>titolari</span><span><i style="background:var(--hl-b)"></i>panchina</span></span>
+    <span class="sp" id="ng-when"></span>
+    <button id="ng-now" title="aggiorna adesso">↻</button>
+  </div>
+  <div id="ng-strip" class="strip"></div>
+  <div id="ng-grid" class="ng-grid"></div>
+</div>
+</div>

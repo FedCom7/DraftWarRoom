@@ -18,9 +18,9 @@ ORDER = [
     "p3_plan_a.html", "p3b_topina.html", "p4_plan_b.html", "p5_plan_c.html",
     "p6_plan_d.html", "p7_plan_e.html",
     "p8_console.html", "pB_views.html", "pE_views.html", "pF_views.html",
-    "pH_views.html", "pK_views.html", "pL_views.html",
+    "pH_views.html", "pK_views.html", "pL_views.html", "pN_views.html",
     "pT_data.html", "p9_js1.html", "p10_js2.html",
-    "pC_js.html", "pD_js.html", "pG_js.html", "pI_js.html", "pJ_modal.html", "pM_js.html",
+    "pC_js.html", "pD_js.html", "pG_js.html", "pI_js.html", "pJ_modal.html", "pM_js.html", "pN_js.html",
 ]
 # segnaposto nel codice  ->  file dei dati
 DATA = {

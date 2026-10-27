@@ -82,6 +82,25 @@ va rifatto.
 Escluse di proposito: i campi bonus di Sleeper (regole di punteggio, non statistiche),
 le statistiche IDP (la lega non le usa) e i punteggi in formati diversi dal PPR.
 
+## Partite NFL (`#nfl`, `web/parts/pN_*.html`)
+
+Nel blocco Stagione, un riquadro per ogni partita della giornata, quelle in corso in testa:
+punteggio per quarto, cronometro, chi ha la palla, down e red zone, ultima giocata, chi ha
+segnato, i giocatori della lega in campo con i punti ESPN. Sotto, tre letture dei palloni
+per squadra:
+
+- *Target*: quota target (target del giocatore sui target della squadra), con le ricezioni
+  dentro la barra e una tacca sulla quota media della stagione. È il blocco "Targets and
+  catches" del live di Topina, esteso a tutte le partite.
+- *Corse*: quota delle corse, yard e yard a portata.
+- *Passaggi*: completati, yard, TD, intercetti, yard a tentativo.
+
+I dati arrivano dal browser, anche in locale, da `site.api.espn.com` (`scoreboard` e
+`summary`, CORS aperto): ogni 30 secondi se c'è una partita in corso, altrimenti ogni 5
+minuti. Una partita finita si legge una volta sola. Se ESPN manda un tabellino senza
+statistiche dei giocatori (succede, con categorie "xfl"/"ufl"), non viene tenuto come
+definitivo e si riprova al giro dopo. Con le frecce si rivedono le giornate passate.
+
 ## Analisi di stagione (`scripts/season_review.py`)
 
 Due pagine nel blocco Stagione, calcolate sulle sole giornate concluse e sui punti dei titolari:

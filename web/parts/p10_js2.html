@@ -252,7 +252,7 @@ function boot(prefill){
 const SHARED=[['profiles','Profili'],['compare','Confronto'],['schedule','Calendario'],['depth','Reparti NFL']];
 const BLOCKS={
   draft:{label:'Draft',def:'console',own:[['console','Draft room'],['value','Value board'],['scarcity','Scarsità & VORP'],['rivals','Avversari']]},
-  season:{label:'Stagione',def:'myteam',own:[['myteam','La mia rosa'],['teams','Le squadre'],['matchup','Matchup'],['waiver','Waiver'],['trades','Scambi'],['history','Storico'],['review','Analisi squadre'],['memo','Da ricordare']]}};
+  season:{label:'Stagione',def:'myteam',own:[['myteam','La mia rosa'],['teams','Le squadre'],['nfl','Partite NFL'],['matchup','Matchup'],['waiver','Waiver'],['trades','Scambi'],['history','Storico'],['review','Analisi squadre'],['memo','Da ricordare']]}};
 const VIEWS=['plan',...new Set([...BLOCKS.draft.own,...BLOCKS.season.own,...SHARED].map(v=>v[0]))];
 const blockOf=v=>BLOCKS.draft.own.some(o=>o[0]===v)?'draft':BLOCKS.season.own.some(o=>o[0]===v)?'season':null;
 let curBlock='draft';

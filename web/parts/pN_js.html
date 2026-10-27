@@ -1,0 +1,315 @@
+<script>
+(()=>{
+'use strict';
+/* ================= PARTITE NFL =================
+   Un riquadro per partita della giornata: punteggio, quarto e cronometro, chi ha
+   la palla, chi ha segnato e come si dividono i palloni (quota target, corse,
+   passaggi). È la stessa lettura del "dentro la partita" del live di Topina —
+   tabellino ESPN `summary`, targets e ricezioni giocatore per giocatore — ma per
+   tutte le partite insieme invece che solo per quelle dei tuoi.
+
+   Tutto arriva dal browser, anche sul sito locale: le API "site" di ESPN hanno
+   CORS aperto. Si scaricano solo i tabellini delle partite in corso; una partita
+   finita si legge una volta e poi resta in memoria. */
+const D=window.DWR,A=window.DWR2,M=window.DWR3;
+const {TBY,MY,esc}=D;const {POSC,n1,R}=A;const {POOL}=M;
+const $=(s,r=document)=>r.querySelector(s);
+const TOP=window.TOPINA;
+const IMG=__IMAGES__;
+const SITE='https://site.api.espn.com/apis/site/v2/sports/football/nfl';
+const EVERY=30000;                 // come il resto della pagina
+const IDLE=5*60000;                // senza partite in corso basta un giro ogni 5 minuti
+const ABBR={LA:'LAR',WAS:'WSH',JAC:'JAX',SD:'LAC',OAK:'LV',STL:'LAR'};
+const ab=t=>ABBR[t]||t;
+const BYID=new Map(POOL.map(p=>[p.id,p]));
+const logoSrc=t=>IMG.teams[t]||`img/teams/${t}.webp`;
+const ESPN_LOGO=t=>`https://a.espncdn.com/i/teamlogos/nfl/500/${String(t).toLowerCase()}.png`;
+const logo=(t,cls='')=>`<img${cls?` class="${cls}"`:''} src="${logoSrc(t)}" alt="" loading="lazy" onerror="this.onerror=null;this.src='${ESPN_LOGO(t)}'">`;
+const num=v=>{const x=parseFloat(v);return Number.isFinite(x)?x:0};
+const shortName=n=>{const p=String(n||'').split(' ');return p.length>1&&!/D\/ST$/.test(n)?p[0][0]+'. '+p.slice(1).join(' '):n};
+const pctTxt=v=>Math.round(v*100)+'%';
+
+const S={wk:null,filter:'all',use:'tgt',openSc:new Set(),games:[],wkOf:null,at:0,loading:false,err:null,tryAt:0,tryWk:null};
+// evidenziare i miei è una preferenza di chi guarda: resta fra una visita e l'altra
+try{S.hl=localStorage.getItem('dwr-ng-hl')==='1'}catch(e){S.hl=false}
+const hlOf=o=>S.hl&&o&&o.t===MY?(o.starter?' hl-s':' hl-b'):'';
+const SUM=new Map();               // id partita -> { at, final, t: tabellino letto }
+const curWeek=()=>TOP.week||1;
+const viewWk=()=>S.wk||curWeek();
+
+/* ---------- chi è di chi, e quanti punti ha fatto (per giornata) ---------- */
+function rostersOf(wk){
+  const lg=TOP.lg||{};
+  if(wk===curWeek())return lg.lineups||{};
+  return (lg.byWeek||{})[wk]||(wk>curWeek()?lg.lineups||{}:{});
+}
+function ownerMap(wk){
+  const out=new Map();
+  Object.entries(rostersOf(wk)).forEach(([tid,rows])=>(rows||[]).forEach(r=>
+    out.set(r.id,{t:+tid,act:r.act,starter:r.starter,slot:r.slot})));
+  return out;
+}
+
+/* ---------- lettura delle risposte ESPN ---------- */
+function gameFrom(e){
+  const comp=(e.competitions||[{}])[0],status=comp.status||{},st=status.type||{};
+  const side=c=>({id:String((c.team||{}).id||''),abbr:ab((c.team||{}).abbreviation||''),
+    name:(c.team||{}).shortDisplayName||(c.team||{}).abbreviation||'',
+    score:num(c.score),rec:((c.records||[])[0]||{}).summary||'',winner:!!c.winner,
+    lines:(c.linescores||[]).map(l=>l.value!=null?num(l.value):num(l.displayValue))});
+  const cs=comp.competitors||[];
+  const home=side(cs.find(c=>c.homeAway==='home')||cs[0]||{}),away=side(cs.find(c=>c.homeAway==='away')||cs[1]||{});
+  const sit=comp.situation||null,odds=(comp.odds||[])[0]||{},wx=e.weather||{};
+  return{id:String(e.id),date:e.date,state:st.state||'pre',name:st.name||'',detail:st.shortDetail||'',
+    period:status.period||0,clock:status.displayClock||'',home,away,
+    poss:sit&&sit.possession?[home,away].find(s=>s.id===String(sit.possession))?.abbr||null:null,
+    sit:sit?{dd:sit.downDistanceText||sit.shortDownDistanceText||'',rz:!!sit.isRedZone,last:(sit.lastPlay||{}).text||''}:null,
+    odds:{line:odds.details||null,total:odds.overUnder??null},
+    venue:(comp.venue||{}).fullName||'',indoor:!!(comp.venue||{}).indoor,
+    temp:wx.temperature??null,sky:wx.displayValue||'',
+    tv:[...new Set((comp.broadcasts||[]).flatMap(b=>b.names||[]))].join(', ')};
+}
+function boxFrom(d){
+  const teams={};
+  ((d.boxscore||{}).players||[]).forEach(t=>{
+    const o={rec:[],rush:[],pass:[],tgt:0,car:0};
+    (t.statistics||[]).forEach(cat=>{
+      const k=cat.keys||[];
+      const g=(a,n)=>{const i=k.indexOf(n);return i<0?0:num((a.stats||[])[i])};
+      const pair=(a,n)=>{const i=k.indexOf(n);return i<0?[0,0]:String((a.stats||[])[i]||'').split('/').map(num)};
+      (cat.athletes||[]).forEach(a=>{
+        const id=+((a.athlete||{}).id||0),name=(a.athlete||{}).displayName||'';
+        if(cat.name==='receiving')o.rec.push({id,name,tgt:g(a,'receivingTargets'),rec:g(a,'receptions'),yd:g(a,'receivingYards'),td:g(a,'receivingTouchdowns')});
+        else if(cat.name==='rushing')o.rush.push({id,name,att:g(a,'rushingAttempts'),yd:g(a,'rushingYards'),td:g(a,'rushingTouchdowns')});
+        else if(cat.name==='passing'){const [c,at]=pair(a,'completions/passingAttempts');
+          o.pass.push({id,name,c,att:at,yd:g(a,'passingYards'),td:g(a,'passingTouchdowns'),int:g(a,'interceptions')})}
+      });
+    });
+    o.tgt=o.rec.reduce((s,p)=>s+p.tgt,0);
+    o.car=o.rush.reduce((s,p)=>s+p.att,0);
+    teams[ab((t.team||{}).abbreviation||'')]=o;
+  });
+  const scoring=(d.scoringPlays||[]).map(s=>({q:(s.period||{}).number||0,clk:(s.clock||{}).displayValue||'',
+    team:ab((s.team||{}).abbreviation||''),k:(s.type||{}).abbreviation||'',text:s.text||'',a:s.awayScore,h:s.homeScore}));
+  // a volte ESPN manda il tabellino con le categorie sbagliate ("xfl", "ufl"…) e
+  // nessun giocatore: non è un dato, quindi non va tenuto come definitivo
+  const ok=Object.values(teams).some(t=>t.rec.length||t.rush.length||t.pass.length);
+  return{teams,scoring,ok};
+}
+
+const getJSON=async url=>{
+  const stop=new AbortController(),timer=setTimeout(()=>stop.abort(),10000);
+  try{const r=await fetch(url,{cache:'no-store',signal:stop.signal});if(!r.ok)throw new Error('ESPN '+r.status);return r.json()}
+  finally{clearTimeout(timer)}
+};
+
+async function load(){
+  if(S.loading)return;
+  S.loading=true;
+  const wk=viewWk();
+  S.tryAt=Date.now();S.tryWk=wk;
+  const season=TOP.season||new Date().getFullYear();
+  try{
+    const sb=await getJSON(`${SITE}/scoreboard?dates=${season}&seasontype=2&week=${wk}`);
+    const games=(sb.events||[]).map(gameFrom);
+    await Promise.all(games.map(async g=>{
+      if(g.state==='pre')return;
+      const old=SUM.get(g.id);
+      if(old&&old.final)return;                    // finita e già letta: il tabellino non cambia più
+      try{
+        const d=await getJSON(`${SITE}/summary?event=${g.id}`);
+        if(d&&d.boxscore){const t=boxFrom(d);if(t.ok||!old)SUM.set(g.id,{at:Date.now(),final:g.state==='post'&&t.ok,t})}
+      }catch(e){/* si tiene il tabellino del giro prima: meglio numeri vecchi di 30 secondi che nessuno */}
+    }));
+    if(wk===viewWk()){S.games=games;S.wkOf=wk;S.at=Date.now();S.err=null}
+  }catch(e){S.err='ESPN non risponde: riprovo fra poco'}
+  finally{S.loading=false}
+  if(isOn())render();
+}
+
+const isOn=()=>{const v=document.getElementById('view-nfl');return !!v&&!v.hidden};
+function maybeLoad(force){
+  if(S.loading)return;
+  const live=S.games.some(g=>g.state==='in');
+  // una partita che dovrebbe essere già cominciata va ricontrollata come una in corso
+  const soon=S.games.some(g=>g.state==='pre'&&new Date(g.date)-Date.now()<EVERY);
+  const age=Date.now()-S.at;
+  // dopo un errore non si riprova a raffica: si aspetta il giro successivo
+  if(!force&&S.tryWk===viewWk()&&Date.now()-S.tryAt<EVERY-5000)return;
+  if(force||S.wkOf!==viewWk()||((live||soon)&&age>EVERY-5000)||age>IDLE)load();
+}
+
+/* ---------- disegno ---------- */
+const ITDAY=d=>new Date(d).toLocaleDateString('it-IT',{weekday:'short',day:'numeric',month:'numeric'});
+const ITTIME=d=>new Date(d).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+function statusOf(g){
+  if(g.state==='in'){
+    if(g.name==='STATUS_HALFTIME')return{b:'Intervallo',s:''};
+    const q=g.period>4?'OT':'Q'+g.period;
+    if(g.name==='STATUS_END_PERIOD')return{b:'Fine '+q,s:''};
+    return{b:`<span class="livedot"></span> ${q}`,s:esc(g.clock)};
+  }
+  if(g.state==='post')return{b:g.period>4?'Finale/OT':'Finale',s:esc(ITDAY(g.date))};
+  if(/POSTPONED|CANCELED|DELAYED/.test(g.name))return{b:esc(g.detail),s:''};
+  return{b:esc(ITDAY(g.date)),s:esc(ITTIME(g.date))};
+}
+const ownTag=o=>o?`<span class="o${o.t===MY?' me':''}" title="${esc((TBY.get(o.t)||{}).name||'')}">${esc((TBY.get(o.t)||{}).abbr||'')}</span>`:'';
+const posTag=id=>{const p=BYID.get(id);return p?`<span class="p" style="background:${POSC[p.pos]||'#9AA8BA'}">${p.pos==='DST'?'D':p.pos}</span>`:''};
+const nameCell=(id,name,own)=>`<span class="n">${posTag(id)}${ownTag(own)}<span${BYID.has(id)?` data-pid="${id}"`:''}>${esc(shortName(name))}</span></span>`;
+const ptsCell=own=>own&&own.act!=null?`<span class="pt">${n1(own.act)}</span>`:'<span class="pt na">–</span>';
+const vals=list=>`<span class="v">${list.map(([v,w])=>`<span style="min-width:${w||22}px;text-align:right"${v?'':' class="z"'}>${v||0}</span>`).join('')}</span>`;
+
+function usageSide(g,side,box,own){
+  const t=box.teams[side.abbr];
+  const head=(lab,extra)=>`<div class="hd">${logo(side.abbr)}${esc(side.abbr)}<small>${extra}</small></div>`;
+  if(!t||!box.ok)return`<div class="ng-side">${head('','')}<div class="ng-empty">ESPN non ha ancora pubblicato le statistiche dei giocatori: riprovo al prossimo giro.</div></div>`;
+  const rows=[];
+  if(S.use==='tgt'){
+    const list=t.rec.filter(p=>p.tgt>0).sort((a,b)=>b.tgt-a.tgt||b.yd-a.yd);
+    const keep=list.filter((p,i)=>i<6||own.has(p.id));       // i giocatori della lega restano anche se sono oltre il sesto
+    const max=Math.max(.4,...keep.map(p=>p.tgt/(t.tgt||1)));
+    keep.forEach(p=>{
+      const sh=t.tgt?p.tgt/t.tgt:0,w=sh/max*100,c=p.tgt?w*p.rec/p.tgt:0,o=own.get(p.id);
+      const season=(BYID.get(p.id)||{}).tsh26;
+      rows.push(`<div class="ng-u${hlOf(o)}">${nameCell(p.id,p.name,o)}
+        <span class="b" title="${p.tgt} target su ${t.tgt} della squadra (${pctTxt(sh)}), ${p.rec} prese${season?` · media stagione ${n1(season)}%`:''}"><i style="width:${w.toFixed(1)}%"></i><i class="c" style="width:${c.toFixed(1)}%"></i>${season?`<u style="left:${Math.min(99,season/100/max*100).toFixed(1)}%"></u>`:''}<em>${pctTxt(sh)}</em></span>
+        ${vals([[p.tgt],[p.rec],[p.yd,30],[p.td,16]])}${ptsCell(o)}</div>`)});
+    return`<div class="ng-side">${head('',`${t.tgt} target`)}
+      <div class="ng-u hd2"><span>ricevitore</span><span>quota target</span><span class="v"><span style="min-width:22px;text-align:right">tgt</span><span style="min-width:22px;text-align:right">rec</span><span style="min-width:30px;text-align:right">yd</span><span style="min-width:16px;text-align:right">td</span></span><span style="text-align:right">pt</span></div>
+      ${rows.join('')||'<div class="ng-empty">Nessun passaggio ancora</div>'}</div>`;
+  }
+  if(S.use==='rush'){
+    const list=t.rush.filter(p=>p.att>0).sort((a,b)=>b.att-a.att);
+    const keep=list.filter((p,i)=>i<4||own.has(p.id));
+    const max=Math.max(.5,...keep.map(p=>p.att/(t.car||1)));
+    keep.forEach(p=>{
+      const sh=t.car?p.att/t.car:0,w=sh/max*100,o=own.get(p.id);
+      rows.push(`<div class="ng-u${hlOf(o)}">${nameCell(p.id,p.name,o)}
+        <span class="b" title="${p.att} corse su ${t.car} della squadra"><i style="width:${w.toFixed(1)}%"></i><em>${pctTxt(sh)}</em></span>
+        ${vals([[p.att],[p.yd,30],[(p.att?p.yd/p.att:0).toFixed(1),30],[p.td,16]])}${ptsCell(o)}</div>`)});
+    return`<div class="ng-side">${head('',`${t.car} corse`)}
+      <div class="ng-u hd2"><span>portatore</span><span>quota corse</span><span class="v"><span style="min-width:22px;text-align:right">car</span><span style="min-width:30px;text-align:right">yd</span><span style="min-width:30px;text-align:right">y/c</span><span style="min-width:16px;text-align:right">td</span></span><span style="text-align:right">pt</span></div>
+      ${rows.join('')||'<div class="ng-empty">Nessuna corsa ancora</div>'}</div>`;
+  }
+  const list=t.pass.filter(p=>p.att>0).sort((a,b)=>b.att-a.att);
+  list.forEach(p=>{
+    const cp=p.att?p.c/p.att:0,o=own.get(p.id);
+    rows.push(`<div class="ng-u${hlOf(o)}">${nameCell(p.id,p.name,o)}
+      <span class="b" title="${p.c} completati su ${p.att}"><i class="c" style="width:${(cp*100).toFixed(1)}%"></i><em>${p.c}/${p.att}</em></span>
+      ${vals([[p.yd,30],[p.td,16],[p.int,16],[(p.att?p.yd/p.att:0).toFixed(1),30]])}${ptsCell(o)}</div>`)});
+  return`<div class="ng-side">${head('','passaggi')}
+    <div class="ng-u hd2"><span>quarterback</span><span>completati</span><span class="v"><span style="min-width:30px;text-align:right">yd</span><span style="min-width:16px;text-align:right">td</span><span style="min-width:16px;text-align:right">int</span><span style="min-width:30px;text-align:right">y/a</span></span><span style="text-align:right">pt</span></div>
+    ${rows.join('')||'<div class="ng-empty">Nessun passaggio ancora</div>'}</div>`;
+}
+
+function scoringHTML(g,box){
+  const all=box.scoring.slice().reverse();          // l'ultima segnatura in cima
+  if(!all.length)return`<div class="ng-sec"><h4>Chi ha segnato</h4><div style="font-size:12px;color:var(--k-muted)">Ancora nessun punto.</div></div>`;
+  const open=S.openSc.has(g.id),list=open?all:all.slice(0,4);
+  return`<div class="ng-sec"><h4>Chi ha segnato <span class="r" style="font:500 10.5px var(--mono);color:var(--k-muted)">${all.length} segnature</span></h4>
+    ${list.map(s=>{
+      const m=/^(.+?)\s+\d+\s+Yd/i.exec(s.text);
+      const txt=m?`<b>${esc(m[1])}</b>${esc(s.text.slice(m[1].length))}`:esc(s.text);
+      return`<div class="ng-sc" title="${esc(s.text)}"><span class="q">${s.q>4?'OT':'Q'+s.q} ${esc(s.clk)}</span>
+        <span class="k${s.k==='TD'?' td':''}">${esc(s.team)} ${esc(s.k)}</span><span class="t">${txt}</span>
+        <span class="s">${s.a}-${s.h}</span></div>`}).join('')}
+    ${all.length>4?`<button class="ng-more" data-ngsc="${g.id}">${open?'mostra solo le ultime':'tutte le '+all.length}</button>`:''}</div>`;
+}
+
+/* i giocatori delle quattro squadre della lega in quella partita */
+function oursIn(g,own){
+  const teams=[g.away.abbr,g.home.abbr];
+  const list=[...own.entries()].map(([id,o])=>({id,o,p:BYID.get(id)})).filter(x=>x.p&&teams.includes(x.p.nfl));
+  list.sort((a,b)=>(b.o.t===MY)-(a.o.t===MY)||(b.o.act||0)-(a.o.act||0));
+  return list;
+}
+function oursHTML(g,list){
+  if(!list.length)return'';
+  return`<div class="ng-sec"><h4>Della lega in campo</h4><div class="ng-ours">${list.map(x=>
+    `<span class="${hlOf(x.o).trim()}"><span class="o${x.o.t===MY?' me':''}">${esc((TBY.get(x.o.t)||{}).abbr||'')}</span><span data-pid="${x.id}">${esc(shortName(x.p.name))}</span>${x.o.starter?'':' <small style="color:var(--k-muted)">pan.</small>'}${g.state!=='pre'&&x.o.act!=null?` <b>${n1(x.o.act)}</b>`:''}</span>`).join('')}</div></div>`;
+}
+
+function cardHTML(g,own){
+  const st=statusOf(g),box=(SUM.get(g.id)||{}).t;
+  const ours=oursIn(g,own),mine=S.hl?ours.some(x=>x.o.t===MY&&x.o.starter)?' has-s':ours.some(x=>x.o.t===MY)?' has-b':'':'';
+  const lose=s=>g.state==='post'&&!s.winner&&g.home.score!==g.away.score;
+  const tm=s=>`<div class="ng-tm${lose(s)?' lose':''}">${logo(s.abbr)}<span class="nm">${esc(s.abbr)}${g.poss===s.abbr?'<span class="ball" title="ha la palla"></span>':''}<small>${esc(s.name)}${s.rec?' · '+esc(s.rec):''}</small></span><span class="scr">${g.state==='pre'?'':s.score}</span></div>`;
+  let h=`<article class="ng-card is-${g.state}${mine}">
+    <div class="ng-top"><div class="ng-teams">${tm(g.away)}${tm(g.home)}</div>
+      <div class="ng-st"><b>${st.b}</b>${st.s?`<small>${st.s}</small>`:''}</div></div>`;
+  if(g.state==='in'&&g.sit&&(g.sit.dd||g.sit.last))
+    h+=`<div class="ng-sit">${g.sit.dd?`<span class="dd">${esc(g.sit.dd)}</span>`:''}${g.sit.rz?'<span class="tag2 bad">red zone</span>':''}<span class="lp" title="${esc(g.sit.last)}">${esc(g.sit.last)}</span></div>`;
+  if(g.state!=='pre'&&(g.home.lines.length||g.away.lines.length)){
+    const n=Math.max(4,g.home.lines.length,g.away.lines.length);
+    const row=s=>`<tr><td>${esc(s.abbr)}</td>${Array.from({length:n},(_,i)=>`<td>${s.lines[i]??''}</td>`).join('')}<td>${s.score}</td></tr>`;
+    h+=`<table class="ng-lines"><tr><th></th>${Array.from({length:n},(_,i)=>`<th>${i<4?'Q'+(i+1):'OT'}</th>`).join('')}<th>T</th></tr>${row(g.away)}${row(g.home)}</table>`;
+  }
+  if(g.state==='pre'){
+    const kv=[['Calcio d\'inizio',`${ITDAY(g.date)} · ${ITTIME(g.date)}`]];
+    if(g.odds.line)kv.push(['Quote',`${g.odds.line}${g.odds.total!=null?` · totale ${g.odds.total}`:''}`]);
+    if(g.venue)kv.push(['Campo',g.venue+(g.indoor?' (coperto)':'')]);
+    if(g.temp!=null&&!g.indoor)kv.push(['Meteo',`${Math.round((g.temp-32)*5/9)}°C${g.sky?' · '+g.sky:''}`]);
+    if(g.tv)kv.push(['TV',g.tv]);
+    h+=`<div class="ng-sec"><div class="ng-pre">${kv.map(([k,v])=>`<span>${k}</span><b>${esc(v)}</b>`).join('')}</div></div>`;
+  }else if(box){
+    h+=scoringHTML(g,box);
+    h+=`<div class="ng-sec"><h4>${S.use==='tgt'?'Quota target':S.use==='rush'?'Quota corse':'Passaggi'}</h4>${usageSide(g,g.away,box,own)}${usageSide(g,g.home,box,own)}</div>`;
+  }else h+=`<div class="ng-sec"><div style="font-size:12px;color:var(--k-muted)">Tabellino in arrivo…</div></div>`;
+  h+=oursHTML(g,ours);
+  return h+'</article>';
+}
+
+function render(){
+  const wk=viewWk(),cw=curWeek();
+  $('#ng-wk-lbl').textContent=`S${wk}${wk===cw?' · ora':''}`;
+  $('#ng-wk-prev').disabled=wk<=1;$('#ng-wk-next').disabled=wk>=18;
+  document.querySelectorAll('[data-ngf]').forEach(b=>b.classList.toggle('on',b.dataset.ngf===S.filter));
+  const hb=$('#ng-hl');hb.classList.toggle('on',S.hl);hb.setAttribute('aria-pressed',String(S.hl));
+  $('#ng-hl-lg').hidden=!S.hl;
+  document.querySelectorAll('[data-ngu]').forEach(b=>b.classList.toggle('on',b.dataset.ngu===S.use));
+  const when=S.at?new Date(S.at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit',second:'2-digit'}):null;
+  $('#ng-when').innerHTML=S.err?`<span style="color:var(--offline)">${esc(S.err)}</span>`:S.loading&&!when?'carico…':when?`aggiornato alle ${when}`:'';
+  if(S.wkOf!==wk){$('#ng-grid').innerHTML=`<div class="ng-empty">${S.err?esc(S.err):'Carico le partite della giornata…'}</div>`;$('#ng-strip').innerHTML='';maybeLoad();return}
+
+  const own=ownerMap(wk);
+  const rank=g=>({in:0,pre:1,post:2}[g.state]??1);
+  const games=S.games.slice().sort((a,b)=>rank(a)-rank(b)||new Date(a.date)-new Date(b.date));
+  const mineIn=g=>oursIn(g,own).some(x=>x.o.t===MY);
+  const shown=games.filter(g=>S.filter==='live'?g.state==='in':S.filter==='mine'?mineIn(g):true);
+
+  const cnt=s=>games.filter(g=>g.state===s).length;
+  const live=games.filter(g=>g.state==='in');
+  const myLive=live.flatMap(g=>oursIn(g,own).filter(x=>x.o.t===MY&&x.o.starter));
+  const nextG=games.filter(g=>g.state==='pre').sort((a,b)=>new Date(a.date)-new Date(b.date))[0];
+  const myTot=[...own.values()].filter(o=>o.t===MY&&o.starter).reduce((s,o)=>s+(o.act||0),0);
+  $('#ng-strip').innerHTML=`
+    <div class="sc" style="border-top-color:var(--live)"><h4>In corso</h4><div class="kv"><span>partite</span><b>${live.length}</b></div><div class="verd">${live.length?live.map(g=>`${esc(g.away.abbr)} ${g.away.score}-${g.home.score} ${esc(g.home.abbr)}`).join(' · '):'Nessuna partita in campo adesso.'}</div></div>
+    <div class="sc"><h4>Da giocare</h4><div class="kv"><span>partite</span><b>${cnt('pre')}</b></div><div class="verd">${nextG?`Prossima: ${esc(nextG.away.abbr)} @ ${esc(nextG.home.abbr)}, ${esc(ITDAY(nextG.date))} alle ${esc(ITTIME(nextG.date))}`:'Giornata tutta iniziata.'}</div></div>
+    <div class="sc"><h4>Finite</h4><div class="kv"><span>partite</span><b>${cnt('post')}</b></div><div class="verd">${cnt('post')?'Tabellini definitivi, letti una volta sola.':'Ancora nessuna.'}</div></div>
+    <div class="sc" style="border-top-color:var(--k-me)"><h4>${esc((TBY.get(MY)||{}).name||'Tu')}</h4><div class="kv"><span>titolari in campo ora</span><b>${myLive.length}</b></div><div class="kv"><span>punti dei titolari</span><b>${n1(myTot)}</b></div><div class="verd">${myLive.length?myLive.map(x=>esc(shortName(x.p.name))).join(', '):'Nessuno dei tuoi titolari sta giocando.'}</div></div>`;
+
+  $('#ng-grid').innerHTML=shown.length?shown.map(g=>cardHTML(g,own)).join('')
+    :`<div class="ng-empty">${S.filter==='live'?'Nessuna partita in corso in questo momento.':S.filter==='mine'?'Nessuno dei tuoi giocatori in questa giornata.':'Nessuna partita in questa giornata.'}</div>`;
+  maybeLoad();
+}
+
+/* ---------- comandi ---------- */
+document.addEventListener('click',e=>{
+  if(!isOn())return;
+  const f=e.target.closest('[data-ngf]');if(f){S.filter=f.dataset.ngf;render();return}
+  const u=e.target.closest('[data-ngu]');if(u){S.use=u.dataset.ngu;render();return}
+  const s=e.target.closest('[data-ngsc]');if(s){const id=s.dataset.ngsc;S.openSc.has(id)?S.openSc.delete(id):S.openSc.add(id);render();return}
+});
+const setWk=d=>{const wk=Math.min(18,Math.max(1,viewWk()+d));S.wk=wk===curWeek()?null:wk;render()};
+$('#ng-wk-prev').onclick=()=>setWk(-1);
+$('#ng-wk-next').onclick=()=>setWk(1);
+$('#ng-hl').onclick=()=>{S.hl=!S.hl;try{localStorage.setItem('dwr-ng-hl',S.hl?'1':'0')}catch(e){}render()};
+$('#ng-now').onclick=()=>{maybeLoad(true);render()};
+setInterval(()=>{if(isOn()&&document.visibilityState==='visible')maybeLoad()},EVERY);
+document.addEventListener('visibilitychange',()=>{if(isOn()&&document.visibilityState==='visible')maybeLoad()});
+
+R.nfl=render;
+const cur=(location.hash||'').slice(1);
+if(cur==='nfl')window.DWR_VIEW(cur);
+})();
+</script>
