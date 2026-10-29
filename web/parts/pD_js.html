@@ -306,7 +306,7 @@ function renderSchedule(){
   const maxB=Math.max(...Object.values(byWeek).map(a=>a.length),1);
   $('#sd-bye').innerHTML=Object.keys(byWeek).sort((a,b)=>a-b).map(w=>{
     const tt=byWeek[w],stars=PLAYERS.filter(p=>tt.includes(p.nfl)).sort((a,b)=>b.proj-a.proj).slice(0,3);
-    return`<div class="mrow" style="grid-template-columns:70px 1fr 200px"><span class="l">Settimana ${w}</span>
+    return`<div class="mrow" style="grid-template-columns:70px minmax(0,1fr) minmax(0,1.6fr)"><span class="l">Settimana ${w}</span>
       <span class="t"><i style="width:${tt.length/maxB*100}%;background:var(--k-y)"></i></span>
       <span style="font-size:11px;color:var(--k-muted);text-align:right">${tt.length} team · ${stars.map(p=>esc(p.name.split(' ').slice(-1)[0])).join(', ')}</span></div>`}).join('');
   const pl=PLAYERS.filter(p=>['QB','RB','WR','TE'].includes(p.pos)&&p.proj>0)

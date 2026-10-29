@@ -266,6 +266,8 @@ function renderSubnav(view){
     +'<span class="sep"></span><span class="shared">anche qui</span>'
     +SHARED.map(([v,l])=>`<button data-view="${v}" aria-selected="${v===view}">${l}</button>`).join('');
   document.querySelectorAll('.blocks button').forEach(x=>x.setAttribute('aria-selected',String(x.dataset.block===curBlock)));
+  const on=sub.querySelector('[aria-selected="true"]');   // su telefono la riga scorre: tieni visibile la pagina aperta
+  if(on&&sub.scrollWidth>sub.clientWidth)sub.scrollLeft=on.offsetLeft-(sub.clientWidth-on.offsetWidth)/2;
   document.querySelector('.planlink').setAttribute('aria-selected','false');
 }
 function setBlock(b){

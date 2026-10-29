@@ -36,6 +36,8 @@
       padding:3px 9px;cursor:pointer;font:600 11px var(--sans)}
     #liveBar button:hover{border-color:#34414F}
     @keyframes lbp{50%{opacity:.35}}
+    @media (max-width:640px){#liveBar{right:10px;bottom:calc(10px + env(safe-area-inset-bottom,0px));padding:5px 8px}
+      #liveBar .txt{display:none}}
     @media (prefers-reduced-motion:reduce){#liveBar .dot{animation:none}}`;
   document.head.appendChild(css);
 
