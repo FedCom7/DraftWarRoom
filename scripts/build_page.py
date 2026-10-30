@@ -99,10 +99,20 @@ def main():
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="icon" href="icon-192.png" type="image/png" sizes="192x192">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" id="ico-svg" href="icons/playbook/favicon.svg" type="image/svg+xml">
+<link rel="icon" id="ico-png" href="icons/playbook/icon-192.png" type="image/png" sizes="192x192">
+<link rel="apple-touch-icon" id="ico-touch" href="icons/playbook/apple-touch-icon.png">
+<link rel="manifest" id="ico-man" href="icons/playbook/manifest.webmanifest">
+<script>
+// icona scelta nelle impostazioni (⚙): va applicata prima che il browser la legga
+window.DWR_ICONS=["playbook","board","clock"];
+window.DWR_SETICON=function(n){
+  if(DWR_ICONS.indexOf(n)<0)n="playbook";
+  var b="icons/"+n+"/",m={"ico-svg":"favicon.svg","ico-png":"icon-192.png","ico-touch":"apple-touch-icon.png","ico-man":"manifest.webmanifest"};
+  for(var id in m)document.getElementById(id).href=b+m[id];
+  return n};
+try{DWR_SETICON(localStorage.getItem("dwr-icon"))}catch(e){}
+</script>
 <meta name="theme-color" content="#0F1412">
 <meta name="apple-mobile-web-app-title" content="War Room">
 <style>

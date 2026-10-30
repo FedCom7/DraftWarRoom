@@ -8,6 +8,17 @@
     <div class="navright">
       <div class="legend"><span class="tag v">VERIFIED</span><span class="tag l">LIKELY</span><span class="tag u">UNVERIFIED</span><span class="tag a">ASSUMPTION</span></div>
       <button class="planlink" data-view="plan">Piano<span class="b-full"> tecnico</span></button>
+      <button class="gear" id="gear" aria-label="Impostazioni" aria-expanded="false" aria-controls="settings" hidden>⚙</button>
+      <div class="settings" id="settings" role="dialog" aria-label="Impostazioni" hidden>
+        <h3>Impostazioni</h3>
+        <fieldset>
+          <legend>Icona del sito</legend>
+          <label><input type="radio" name="dwr-icon" value="playbook"><img src="icons/playbook/favicon.svg" alt=""><span>Playbook<small>Smash: hitch, corner e slant</small></span></label>
+          <label><input type="radio" name="dwr-icon" value="board"><img src="icons/board/favicon.svg" alt=""><span>Draft board<small>la griglia delle pick</small></span></label>
+          <label><input type="radio" name="dwr-icon" value="clock"><img src="icons/clock/favicon.svg" alt=""><span>On the clock<small>il cronometro della pick</small></span></label>
+        </fieldset>
+        <p>Vale per la linguetta del browser e per l'icona sulla schermata Home. Se hai già aggiunto il sito alla Home, toglilo e riaggiungilo.</p>
+      </div>
     </div>
   </div>
   <nav class="subnav" id="subnav" aria-label="Pagine"></nav>

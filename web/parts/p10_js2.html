@@ -313,7 +313,20 @@ function initDoc(){
   $('#toc').addEventListener('click',e=>{const a=e.target.closest('a');if(!a)return;e.preventDefault();document.getElementById(a.dataset.sec).scrollIntoView({behavior:'smooth'})});
   if('IntersectionObserver'in window){const io=new IntersectionObserver(es=>{es.forEach(en=>{if(en.isIntersecting){document.querySelectorAll('#toc a').forEach(a=>a.classList.toggle('on',a.dataset.sec===en.target.id))}})},{rootMargin:'-20% 0px -70% 0px'});secs.forEach(s=>io.observe(s))}}
 
-initDoc();initControls();
+/* impostazioni (⚙): per ora la scelta dell'icona; c'è solo nel sito, dove le icone sono file */
+function initSettings(){
+  const g=$('#gear'),p=$('#settings');
+  if(!window.DWR_SETICON||!g)return;
+  g.hidden=false;
+  let cur='playbook';try{cur=localStorage.getItem('dwr-icon')||cur}catch(e){}
+  p.querySelectorAll('input[name="dwr-icon"]').forEach(r=>{r.checked=r.value===cur;
+    r.addEventListener('change',()=>{const n=window.DWR_SETICON(r.value);try{localStorage.setItem('dwr-icon',n)}catch(e){}})});
+  const open=v=>{p.hidden=!v;g.setAttribute('aria-expanded',String(v))};
+  g.addEventListener('click',e=>{e.stopPropagation();open(p.hidden)});
+  document.addEventListener('click',e=>{if(!p.hidden&&!p.contains(e.target))open(false)});
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!p.hidden){open(false);g.focus()}});
+}
+initDoc();initControls();initSettings();
 ESPN.setPaused(true,true);
 boot(8);   // apre con la 3.01 al tuo team: sei on the clock
 setInterval(()=>{if(UI.visible)ESPN.tick(now());},100);

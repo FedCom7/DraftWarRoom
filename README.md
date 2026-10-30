@@ -21,6 +21,7 @@ python3 scripts/fetch_sources.py        # scarica tutte le sorgenti in data/raw/
 python3 scripts/build_console.py        # calcola tutto in data/build/console.json
 python3 scripts/export_console_assets.py
 python3 scripts/fetch_images.py                 # foto dei giocatori e loghi NFL (una volta)
+python3 scripts/make_icons.py                   # icone del sito in web/icons/ (solo se cambi il disegno)
 python3 scripts/build_page.py --mode web        # web/index.html (sito locale)
 python3 scripts/build_page.py --mode artifact   # dist/console.html (file unico)
 ```
