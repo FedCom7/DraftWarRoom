@@ -82,22 +82,26 @@ for r in range(4):
         i.rect(11 + c*11, 11 + r*11, 9, 9, col or "#1A221E", 2)
 icons.append(i)
 
-# 2 · Playbook: "Smash" — hitch esterno, corner dello slot sopra il cornerback, slant sul lato debole
+# 2 · Playbook: il route tree di un ricevitore — dallo stesso stem partono slant,
+#     out, dig, corner, post e go; il post, in giallo, è la traccia scelta
 i = Icon("playbook", FIELD)
-i.line([(8, 44), (56, 44)], "#2C5E49", 1.6)                       # linea di scrimmage
-def arrow(i, tip, frm, col, L=5.2, W=3.4):
+i.line([(8, 47), (56, 47)], "#2C5E49", 1.6)                       # linea di scrimmage
+def arrow(i, tip, frm, col, L=4.4, W=3.0):
     dx, dy = tip[0]-frm[0], tip[1]-frm[1]; n = math.hypot(dx, dy); ux, uy = dx/n, dy/n
     bx, by = tip[0]-ux*L, tip[1]-uy*L
     i.poly([tip, (bx-uy*W, by+ux*W), (bx+uy*W, by-ux*W)], col)
-i.line([(12, 45), (12, 29), (15, 32)], G, 3)                   # hitch
-arrow(i, (17.2, 34.2), (14.6, 31.6), G)
-i.line([(32, 45), (32, 30), (20.5, 18.5)], Y, 3.2)                     # corner: la giocata
-arrow(i, (17.4, 15.4), (21, 19), Y)
-i.line([(50, 45), (50, 37), (42.5, 29.5)], G, 3)                  # slant
-arrow(i, (40.2, 27.2), (43, 30), G)
-for cx in (12, 32, 50): i.circle(cx, 51, 4.3, stroke=INK, w=2.6)
-for cx, cy in ((23.5, 32), (46, 15)):
-    i.line([(cx-3.6, cy-3.6), (cx+3.6, cy+3.6)], INK, 2.6).line([(cx-3.6, cy+3.6), (cx+3.6, cy-3.6)], INK, 2.6)
+def route(i, pts, col, w=2.6):
+    tip, prev = pts[-1], pts[-2]
+    n = math.hypot(tip[0]-prev[0], tip[1]-prev[1])
+    end = (tip[0]-(tip[0]-prev[0])/n*3.2, tip[1]-(tip[1]-prev[1])/n*3.2)   # la linea si ferma sotto la punta
+    i.line(pts[:-1] + [end], col, w); arrow(i, tip, prev, col)
+route(i, [(32, 48), (32, 8)], G)                                   # go (stem)
+route(i, [(32, 42), (42, 34.5)], G)                                # slant
+route(i, [(32, 34), (17, 34)], G)                                  # out
+route(i, [(32, 27), (48, 27)], G)                                  # dig
+route(i, [(32, 21), (19.5, 11)], G)                                # corner
+route(i, [(32, 21), (44.5, 11)], Y, 3.2)                           # post: la traccia scelta
+i.circle(32, 53, 4.3, stroke=INK, w=2.6)
 icons.append(i)
 
 # 5 · On the clock: il cronometro della pick, spicchio di tempo giallo
