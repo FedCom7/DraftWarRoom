@@ -34,7 +34,8 @@ a{color:var(--accent)}
 .brand{border:0;background:none;color:inherit;cursor:pointer;font-family:var(--display);font-weight:700;font-size:22px;letter-spacing:.02em;text-transform:uppercase;display:flex;align-items:center;gap:10px}
 .brand i{display:inline-block;width:22px;height:4px;background:var(--mark);border-radius:2px;transform:skewX(-20deg)}
 .b-short{display:none}
-.topbar{flex-direction:column;align-items:stretch;gap:0}
+.topbar{flex-direction:column;align-items:stretch;gap:0;flex-wrap:nowrap}   /* su più righe la riga delle pagine prenderebbe la sua larghezza intera e allargherebbe la pagina */
+.navrow,.subnav{min-width:0}
 .navrow{display:flex;align-items:center;gap:16px;flex-wrap:wrap}
 .blocks{display:flex;gap:4px;background:var(--sunk);padding:3px;border-radius:10px}
 .blocks button{font:700 15px/1 var(--display);letter-spacing:.06em;text-transform:uppercase;border:0;background:transparent;color:var(--muted);padding:8px 18px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:7px}
