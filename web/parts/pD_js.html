@@ -318,45 +318,7 @@ function renderSchedule(){
       <td class="num" style="background:${sosColor(x.s)};border-radius:4px">${f2(x.s)}</td></tr>`).join('')+'</tbody>';
 }
 
-/* ================= WAIVER ================= */
-const volOf=p=>(p.tgtpg26||0)*1.6+(p.carpg26||0);
-const growthOf=p=>(!p.g26||!p.g25||p.pos==='QB'||p.pos==='K'||p.pos==='DST')?0:
-  ((p.tgtpg26||0)+(p.carpg26||0))-(((p.tgt||0)+(p.car||0))/p.g25);
-const MEDV={},MEDP={};
-ALLP.forEach(pos=>{
-  const l=byPos[pos].slice(0,24);
-  const v=l.map(volOf).filter(x=>x>0).sort((a,b)=>a-b),pr=l.map(p=>p.proj).filter(x=>x>0).sort((a,b)=>a-b);
-  MEDV[pos]=v.length?v[Math.floor(v.length/2)]:1;MEDP[pos]=pr.length?pr[Math.floor(pr.length/2)]:1});
-/* punteggio normalizzato dentro il reparto: un QB e un WR restano confrontabili */
-function oppScore(p){
-  const vol=volOf(p)/Math.max(0.5,MEDV[p.pos]),proj=p.proj/Math.max(1,MEDP[p.pos]);
-  const snap=(p.snap26!=null?p.snap26:(p.snap||0))/100;
-  const g=Math.max(-3,Math.min(5,growthOf(p)));
-  return 34*vol+26*proj+14*snap+3.2*g+(p.g26?0:-8);
-}
-function renderWaiver(){
-  const list=PLAYERS.filter(p=>(P2.pos==='ALL'||p.pos===P2.pos)&&(!P2.fa||!p.own)&&p.proj>0)
-    .map(p=>({p,s:oppScore(p),g:growthOf(p)}));
-  const key={opp:x=>-x.s,trend:x=>-x.g,proj:x=>-x.p.proj,ppg26:x=>-(x.p.ppg26||0)}[P2.sort];
-  list.sort((a,b)=>key(a)-key(b));
-  $('#wv-info').textContent=`${PLAYERS.filter(p=>p.own).length} giocatori occupati · ${PLAYERS.filter(p=>!p.own).length} liberi nel pool analizzato`;
-  const max=Math.max(...list.map(x=>x.s),1);
-  $('#wv-table').innerHTML=`<thead><tr><th>Giocatore</th><th>Pos</th><th class="num">Opportunità</th><th class="num">Tgt/g '26</th><th class="num">Corse/g '26</th><th class="num">Snap '26</th><th class="num">Ppg '26</th><th class="num">Proj</th><th>Stato</th></tr></thead><tbody>`+
-    list.slice(0,60).map(x=>{const p=x.p;
-      return`<tr><td><b>${esc(p.name)}</b> <span style="color:var(--k-muted)">${p.nfl}${p.bye?' · bye '+p.bye:''}</span>${p.inj?` <span class="tag2 bad">${p.inj}</span>`:''}</td>
-      <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
-      <td class="num"><span class="mini"><i style="width:${Math.max(3,x.s/max*100)}%;background:${POSC[p.pos]}"></i></span>${n0(x.s)}</td>
-      <td class="num">${p.tgtpg26!=null?n1(p.tgtpg26):'—'}</td><td class="num">${p.carpg26!=null?n1(p.carpg26):'—'}</td>
-      <td class="num">${p.snap26!=null?n0(p.snap26)+'%':'—'}</td><td class="num">${p.ppg26!=null?n1(p.ppg26):'—'}</td>
-      <td class="num">${n0(p.proj)}</td>
-      <td>${p.own?`<span class="tag2 warn">${esc(TBY.get(p.own).name)}</span>`:`<span class="tag2 good">libero</span>`}${x.g>=2.5?'<span class="tag2 acc">volume in crescita</span>':x.g<=-2.5?'<span class="tag2 warn">volume in calo</span>':''}${p.pct!=null&&p.pct<40&&!p.own?'<span class="tag2">poco posseduto altrove</span>':''}</td></tr>`}).join('')+'</tbody>';
-  $('#wv-rosters').innerHTML=[1,2,3,4].map(t=>{
-    const pl=PLAYERS.filter(p=>p.own===t).sort((a,b)=>b.proj-a.proj);
-    const cnt=ALLP.map(pos=>`${pos} ${pl.filter(p=>p.pos===pos).length}`).join(' · ');
-    return`<div class="tm" style="margin-bottom:8px;${t===MY?'border-color:var(--k-me)':''}"><div class="th2"><b>${esc(TBY.get(t).name)}</b>${t===MY?'<small style="color:var(--k-me)">tu</small>':''}<span class="tot">${pl.length} giocatori</span></div>
-      <div style="font-size:11px;color:var(--k-muted);margin-bottom:6px">${cnt}</div>
-      ${pl.slice(0,8).map(p=>`<div class="un"><span class="p" style="background:${POSC[p.pos]}">${p.pos}</span><span class="n">${esc(p.name)}</span><span class="v">${n0(p.proj)}</span></div>`).join('')}</div>`}).join('');
-}
+/* il waiver vive in pW_js.html: usa il pool completo e la rosa viva */
 
 /* ================= CONFRONTO ================= */
 const CA='#3CC7F5', CB='#F2D82E';
@@ -551,10 +513,6 @@ function renderCompare(){
 }
 
 /* ================= wiring ================= */
-function wvChips(){chips($('#wv-pos'),['ALL',...ALLP],P2.pos,c=>{P2.pos=c;wvChips();renderWaiver()})}
-wvChips();
-$('#wv-sort').onchange=e=>{P2.sort=e.target.value;renderWaiver()};
-$('#wv-fa').onchange=e=>{P2.fa=e.target.checked;renderWaiver()};
 $('#sd-pos').onchange=e=>{P2.sdPos=e.target.value;renderSchedule()};
 $('#sd-win').onchange=e=>{P2.sdWin=e.target.value;renderSchedule()};
 $('#cmp-a').onchange=e=>{P2.a=e.target.value;renderCompare()};
@@ -575,8 +533,8 @@ $('#mk-first').onclick=()=>{
     .sort((a,b)=>b.mean-a.mean),'Prima scelta alla 1.01'),20)};
 
 window.DWR_SCHED=SCHED;window.DWR_FPA=FPA;
-R.rivals=renderRivals;R.schedule=renderSchedule;R.waiver=renderWaiver;R.compare=renderCompare;
+R.rivals=renderRivals;R.schedule=renderSchedule;R.compare=renderCompare;
 const cur=(location.hash||'#plan').slice(1);
-if(R[cur]&&['rivals','schedule','waiver','compare'].includes(cur))window.DWR_VIEW(cur);
+if(R[cur]&&['rivals','schedule','compare'].includes(cur))window.DWR_VIEW(cur);
 })();
 </script>

@@ -57,27 +57,89 @@
 </div>
 
 <div id="view-waiver" class="view" hidden>
-<div class="console">
-  <div class="an-head"><h2>Waiver radar · situazione attuale della lega</h2><p>I giocatori nei roster delle quattro squadre si aggiornano ogni 30 secondi, il resto della lega è libero (il conteggio è in alto a destra). In una lega così piccola i waiver valgono più della draft, e il segnale migliore non sono i punti fatti ma il volume: target e corse per gara nel 2026, snap, e il confronto con il 2025.</p></div>
+<div class="console wv">
+  <div class="an-head"><h2>Waiver · chi prendere e chi tagliare</h2><p>Tutti i giocatori liberi della lega messi contro la tua rosa. Ogni sostituzione è provata davvero: si toglie un tuo giocatore, si mette il libero e si ricalcola la formazione migliore giornata per giornata. Il guadagno è quello che cambia nei <b>titolari</b>, in punti a giornata. Il valore atteso di una giornata mescola la proiezione ESPN di quella settimana (65%) con la media delle ultime cinque partite giocate (35%): una proiezione a zero vuol dire fuori o in bye.</p></div>
   <div class="an-bar">
     <div class="chips" id="wv-pos"></div>
-    <label>Ordina per <select id="wv-sort">
-      <option value="opp">Punteggio di opportunità</option><option value="trend">Volume in crescita</option>
-      <option value="proj">Proiezione stagionale</option><option value="ppg26">Punti a gara 2026</option></select></label>
-    <label><input type="checkbox" id="wv-fa" checked> Solo liberi nella lega</label>
+    <label>Forma su <select id="wv-win"><option value="3">ultime 3 giornate</option><option value="5" selected>ultime 5 giornate</option><option value="99">tutta la stagione</option></select></label>
+    <label>Orizzonte <select id="wv-hor"><option value="1">prossima giornata</option><option value="2">prossime 2</option><option value="4" selected>prossime 4</option></select></label>
     <span class="sp" id="wv-info"></span>
   </div>
-  <div class="an-grid" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
+  <div class="strip" id="wv-strip"></div>
+
+  <div class="an-grid" style="grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)">
     <div class="chartcard">
-      <h3>Giocatori disponibili ora</h3>
-      <p class="cn">Il punteggio di opportunità pesa volume 2026 per gara, snap, crescita rispetto al 2025 e proiezione residua.</p>
-      <div style="overflow:auto;max-height:620px"><table class="antable" id="wv-table"></table></div>
+      <h3>Le mosse che rafforzano la formazione</h3>
+      <p class="cn">Per ogni libero il taglio che rende di più, dando per fatte le mosse del piano negli altri reparti (chi non vale nulla si taglia una volta sola). A parità di guadagno si taglia chi vale meno nel resto della stagione. La barra è il guadagno dei titolari in punti a giornata sull'orizzonte scelto. Tocca una riga per aprire il testa a testa qui sotto.</p>
+      <div class="chartwrap" id="wv-moves"></div>
+      <h3 style="margin-top:14px">Il piano, una mossa dopo l'altra</h3>
+      <p class="cn">Le mosse applicate in sequenza: dopo ognuna la rosa cambia e la successiva tiene conto della precedente.</p>
+      <div id="wv-plan"></div>
     </div>
     <div class="chartcard">
-      <h3>Chi ha cosa, adesso</h3>
-      <p class="cn">I roster delle quattro squadre come li riporta ESPN in questo momento.</p>
-      <div id="wv-rosters"></div>
+      <h3>Dove i liberi battono i tuoi titolari</h3>
+      <p class="cn">Valore atteso a giornata sull'orizzonte. Blu: i tuoi giocatori del reparto, pieni se titolari e vuoti se in panchina. Giallo: i tre liberi migliori. Un giallo a destra del blu più debole pieno è un titolare da cambiare. Tocca un reparto per analizzarlo.</p>
+      <div class="chartwrap" id="wv-gap"></div>
+      <div class="legend2" id="wv-gap-lg"></div>
     </div>
+  </div>
+
+  <div class="wv-sec"><h3>Il reparto</h3><div class="chips" id="wv-rpos"></div>
+    <label>Misura <select id="wv-metric"></select></label></div>
+  <div class="an-grid">
+    <div class="chartcard">
+      <h3 id="wv-ladder-t">Classifica del reparto</h3>
+      <p class="cn">I migliori del reparto più tutti i tuoi. Blu i tuoi, giallo i liberi, grigio chi è già in un'altra rosa (con la sigla della squadra).</p>
+      <div class="chartwrap" id="wv-ladder"></div>
+    </div>
+    <div class="chartcard">
+      <h3 id="wv-scatter-t">Volume contro punti</h3>
+      <p class="cn" id="wv-scatter-cn"></p>
+      <div class="chartwrap" id="wv-scatter"></div>
+      <div class="legend2" id="wv-scatter-lg"></div>
+    </div>
+  </div>
+
+  <div class="wv-sec"><h3>Testa a testa</h3>
+    <label>Il tuo <select id="wv-mine"></select></label>
+    <span style="color:var(--k-muted)">contro</span>
+    <label>il libero <input list="wv-free-list" id="wv-free" placeholder="Nome del giocatore" autocomplete="off"></label>
+    <datalist id="wv-free-list"></datalist></div>
+  <div class="strip" id="wv-h2h-cards"></div>
+  <div class="an-grid">
+    <div class="chartcard">
+      <h3>Punti giornata per giornata</h3>
+      <p class="cn">Linea piena: le partite giocate (un buco è una partita saltata o il bye). Tratteggio: il valore atteso delle prossime giornate.</p>
+      <div class="chartwrap" id="wv-h2h-pts"></div>
+      <div class="legend2" id="wv-h2h-lg"></div>
+    </div>
+    <div class="chartcard">
+      <h3>Utilizzo giornata per giornata</h3>
+      <div class="chips" id="wv-use" style="margin:2px 0 8px"></div>
+      <div class="chartwrap" id="wv-h2h-use"></div>
+    </div>
+  </div>
+  <div class="an-grid" style="margin-top:10px">
+    <div class="chartcard">
+      <h3>Numeri a confronto</h3>
+      <p class="cn">Le barre sono in scala sul migliore dei titolari del reparto; il trattino grigio è la mediana dei primi 24. In grassetto il migliore dei due su ogni riga.</p>
+      <div class="chartwrap" id="wv-h2h-bars"></div>
+    </div>
+    <div class="chartcard">
+      <h3>Lettura</h3>
+      <ul class="wv-read" id="wv-h2h-read"></ul>
+    </div>
+  </div>
+
+  <div class="chartcard" style="margin-top:10px">
+    <h3>Tutti i giocatori, i tuoi compresi</h3>
+    <p class="cn">Tocca l'intestazione di una colonna per ordinare, il nome per la scheda completa. Le righe blu sono i tuoi. La barretta mostra i punti di ogni giornata (vuota se non ha giocato). "Δ vs tuo" è il valore atteso meno quello del tuo titolare più debole che potrebbe sostituire.</p>
+    <div class="an-bar" style="margin:0 0 8px;background:transparent;border:0;padding:0">
+      <label><input type="checkbox" id="wv-showmine" checked> mostra i miei</label>
+      <label><input type="checkbox" id="wv-showown"> mostra chi è in altre rose</label>
+      <label><input type="search" id="wv-q" placeholder="Cerca un nome"></label>
+    </div>
+    <div style="overflow:auto;max-height:640px"><table class="antable wv-tab" id="wv-table"></table></div>
   </div>
 </div>
 </div>

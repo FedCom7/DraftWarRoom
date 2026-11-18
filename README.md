@@ -102,6 +102,29 @@ minuti. Una partita finita si legge una volta sola. Se ESPN manda un tabellino s
 statistiche dei giocatori (succede, con categorie "xfl"/"ufl"), non viene tenuto come
 definitivo e si riprova al giro dopo. Con le frecce si rivedono le giornate passate.
 
+## Waiver (`#waiver`, `web/parts/pW_js.html`)
+
+Tutti i giocatori liberi della lega (il pool ESPN completo, non solo quelli della draft)
+contro la tua rosa, con la rosa viva che arriva dal live.
+
+- **Valore atteso di una giornata**: proiezione ESPN di quella settimana (65%) più la
+  media delle ultime cinque partite giocate (35%). Proiezione a zero = fuori o in bye.
+  Le partite saltate (riga a zero senza snap) non entrano nelle medie.
+- **Mosse**: per ogni libero si prova a togliere ognuno dei tuoi e si ricalcola la
+  formazione migliore (prima i posti fissi, poi il flex RB/WR) su 1, 2 o 4 giornate. Il
+  guadagno è solo quello dei titolari. A parità si taglia chi ha la proiezione più bassa
+  nel resto della stagione; le mosse di un reparto danno per fatte quelle del piano negli
+  altri, così un giocatore che vale zero non viene "tagliato" per ogni libero.
+- **Piano**: fino a quattro mosse in sequenza, ognuna sulla rosa già cambiata.
+- **Grafici**: dove i liberi battono i tuoi titolari (per reparto), classifica del
+  reparto su 12 misure, volume contro punti (target share per WR/TE, opportunità per i
+  RB, yard per i QB), testa a testa con punti e utilizzo giornata per giornata e le
+  barre delle statistiche, tabella completa ordinabile con i tuoi in blu.
+- **Target share**: quella di nflverse; se manca, target del giocatore sui target della
+  squadra in quella giornata (la squadra si riconosce da settimana + avversario, quindi
+  regge anche i cambi di maglia). Sulle giornate 1-10 del 2026 lo scarto medio da
+  nflverse è 1,2 punti percentuali.
+
 ## Analisi di stagione (`scripts/season_review.py`)
 
 Due pagine nel blocco Stagione, calcolate sulle sole giornate concluse e sui punti dei titolari:

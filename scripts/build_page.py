@@ -20,7 +20,7 @@ ORDER = [
     "p8_console.html", "pB_views.html", "pE_views.html", "pF_views.html",
     "pH_views.html", "pK_views.html", "pL_views.html", "pN_views.html",
     "pT_data.html", "p9_js1.html", "p10_js2.html",
-    "pC_js.html", "pD_js.html", "pG_js.html", "pI_js.html", "pJ_modal.html", "pM_js.html", "pN_js.html",
+    "pC_js.html", "pD_js.html", "pG_js.html", "pW_js.html", "pI_js.html", "pJ_modal.html", "pM_js.html", "pN_js.html",
 ]
 # segnaposto nel codice  ->  file dei dati
 DATA = {
