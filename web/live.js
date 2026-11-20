@@ -77,7 +77,7 @@
     Object.entries(d.curves || {}).forEach(([pid, weeks]) => {
       T.curves[pid] = Object.assign(T.curves[pid] || {}, weeks);
     });
-    const view = (location.hash || '#myteam').slice(1);
+    const view = (location.hash || '#week').slice(1);
     if (window.DWR_VIEW) window.DWR_VIEW(view);
     return true;
   }

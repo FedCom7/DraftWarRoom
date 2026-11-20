@@ -19,34 +19,29 @@
   </div>
 
   <div class="chartcard" style="margin-top:10px">
-    <h3>Atteso contro reale</h3>
-    <p class="cn">Per ogni tuo giocatore: i punti a gara che la proiezione si aspettava e quelli veri del 2026. Il segmento è lo scarto; le due sole giornate giocate lo rendono rumoroso, ma i casi estremi vanno guardati.</p>
+    <h3>Da qui alla fine: settimana per settimana</h3>
+    <p class="cn">La formazione migliore di ogni giornata rimasta, con le proiezioni ESPN finché esistono (poi ritmo 2026 e calendario), contro quella dell'avversario di lega. Le ultime righe sono i playoff: lì l'avversario si decide con il seed. Un buco è uno slot che vale zero: bye, infortunio o reparto vuoto.</p>
+    <p class="cn" id="mt-season-note"></p>
+    <div class="tscroll"><table class="antable" id="mt-season"></table></div>
+  </div>
+  <div class="chartcard" style="margin-top:10px">
+    <h3>Proiezione contro reale</h3>
+    <p class="cn">Per ogni tuo giocatore: i punti a gara che ESPN si aspetta da qui alla fine (proiezione sul resto della stagione) e quelli che ha fatto davvero nel 2026. Chi è molto sopra la proiezione sta rendendo più di quanto ESPN creda che possa durare; chi è sotto, ESPN lo vede in ripresa.</p>
     <div class="chartwrap" id="mt-chart"></div>
-    <div class="legend2"><span><i style="background:var(--k-muted)"></i>atteso</span><span><i style="background:var(--live)"></i>sopra le attese</span><span><i style="background:var(--offline)"></i>sotto</span></div>
+    <div class="legend2"><span><i style="background:var(--k-muted)"></i>proiezione ESPN a gara</span><span><i style="background:var(--live)"></i>reale sopra</span><span><i style="background:var(--offline)"></i>sotto</span></div>
   </div>
   <div class="chartcard" style="margin-top:10px">
     <h3>Salute della rosa · chi sta rendendo e chi no</h3>
-    <p class="cn">“Atteso” è la proiezione stagionale ESPN divisa per 17. Il volume conta più dei punti: target share e corse per gara spiegano il rendimento futuro molto meglio dei touchdown già segnati.</p>
-    <div style="overflow-x:auto"><table class="antable" id="mt-roster"></table></div>
+    <p class="cn">“ESPN/g” è la proiezione ESPN sul resto della stagione divisa per le partite che restano. Il volume conta più dei punti: target share e corse per gara spiegano il rendimento futuro molto meglio dei touchdown già segnati.</p>
+    <div class="tscroll"><table class="antable" id="mt-roster"></table></div>
   </div>
 
-  <div class="an-grid" style="margin-top:10px;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr)">
-    <div class="chartcard">
-      <h3>Volume contro produzione</h3>
-      <p class="cn">Ogni punto è un giocatore libero: a destra chi ha volume, in alto chi sta già segnando. I nomi in alto a destra sono i veri candidati; in basso a destra ci sono quelli che il volume ce l'hanno ma non l'hanno ancora convertito, che spesso è il momento giusto per prenderli.</p>
-      <div class="chartwrap" id="wv-chart"></div>
-      <div class="legend2" id="wv-lg"></div>
-    </div>
-    <div class="chartcard">
-      <h3>Waiver consigliati per te</h3>
-      <p class="cn">Punteggio costruito su volume (target share, corse, snap), produzione 2026, forza dell'attacco, calendario delle prossime tre giornate, cambi di ruolo e infortuni davanti a loro — e pesato sui tuoi buchi di reparto.</p>
-      <div class="an-bar" style="margin:0 0 8px">
-        <div class="chips" id="mt-wpos"></div>
-        <label><input type="checkbox" id="mt-onlyfa" checked> Solo liberi nella lega</label>
-        <span class="sp" id="mt-winfo"></span>
-      </div>
-      <div style="overflow-x:auto;max-height:600px"><table class="antable" id="mt-waiver"></table></div>
-    </div>
+  <div class="chartcard linkcard" style="margin-top:10px">
+    <div><h3>Waiver</h3><p class="cn" style="margin:0" id="mt-wvlink">Chi prendere e chi tagliare si decide nella pagina Waiver, che prova ogni sostituzione sulla tua formazione.</p></div>
+    <a href="#waiver" data-view="waiver">Apri Waiver →</a>
+  </div>
+
+  <div class="an-grid" style="margin-top:10px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
     <div class="chartcard">
       <h3>Da cui si può prescindere</h3>
       <p class="cn">I tuoi giocatori con meno valore atteso: sono i posti liberi per un waiver. Un titolare non compare mai qui.</p>

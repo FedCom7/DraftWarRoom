@@ -20,7 +20,12 @@ const tm=p=>TMS[p.nfl]||null;
 const K=['id','name','pos','nfl','rank','adp','proj','bye','sd','inj','age','exp','dc',
  'g25','ppg25','tgt25','tsh25','car25','rtd25','rutd25','snap25',
  'g26','ppg26','tgt26','tsh26','car26','rtd26','rutd26','snap26','own','pct','act25','act26','started'];
-const POOL=RAW.map(r=>{const o={};K.forEach((k,i)=>o[k]=r[i]);o.exp26=o.proj/17;
+/* 'proj' di ESPN in stagione è la proiezione sul RESTO della stagione NFL (fino alla 18ª):
+   a gara si divide per le partite che gli restano, non per 17 */
+const WK0=(window.TOPINA&&window.TOPINA.week)||1;
+const gamesLeft=p=>Math.max(1,18-WK0+1-(p.bye&&p.bye>=WK0?1:0));
+window.DWR_PPG=p=>p&&p.proj!=null?p.proj/gamesLeft(p):null;
+const POOL=RAW.map(r=>{const o={};K.forEach((k,i)=>o[k]=r[i]);o.exp26=o.proj/gamesLeft(o);
   if(o.pos==='K'||o.pos==='DST'){o.ppg25=o.ppg26=o.tsh26=o.tsh25=o.tgt26=o.car26=o.snap26=null}   // nflverse non copre K e D/ST
   return o});
 const BYID=new Map(POOL.map(p=>[p.id,p]));
@@ -66,6 +71,14 @@ function basePPG(p,week){
   const w=Math.min(0.55,(p.g26||0)*0.28);
   return (1-w)*p.exp26+w*(p.ppg26!=null?p.ppg26:p.exp26);
 }
+/* valore a gara sul resto della stagione: media delle proiezioni ESPN settimanali che restano
+   (bye esclusa), altrimenti la proiezione stagionale divisa per le partite rimaste */
+function restPPG(p){
+  const r=PW()[String(p.id)];
+  if(r){const v=Object.entries(r).filter(([w])=>+w>=WEEK&&+w!==p.bye).map(([,x])=>x).filter(x=>x!=null);
+    if(v.length)return v.reduce((a,b)=>a+b,0)/v.length}
+  return p.exp26||0;
+}
 function weekPts(p,week){
   if(p.bye===week)return 0;
   if(OUT.includes(p.inj))return p.inj==='D'?basePPG(p,week)*0.3:0;
@@ -93,8 +106,8 @@ function lineupOf(teamId,week){
 function healthTags(p){
   const t=[];
   const d=p.ppg26!=null&&p.exp26?(p.ppg26-p.exp26)/p.exp26:null;
-  if(d!=null&&d>=0.25)t.push('<span class="tag2 good">oltre le attese</span>');
-  else if(d!=null&&d<=-0.3)t.push('<span class="tag2 bad">sotto le attese</span>');
+  if(d!=null&&d>=0.25)t.push('<span class="tag2 good">sopra la proiezione</span>');
+  else if(d!=null&&d<=-0.3)t.push('<span class="tag2 bad">sotto la proiezione</span>');
   if(p.tsh26&&p.tsh25){
     if(p.tsh26-p.tsh25>=4)t.push('<span class="tag2 acc">target in crescita</span>');
     else if(p.tsh26-p.tsh25<=-4)t.push('<span class="tag2 warn">target in calo</span>');
@@ -196,6 +209,24 @@ function waiverReasons(p,w){
   return r
 }
 
+/* ---------- il resto della stagione, settimana per settimana ---------- */
+const RULES=(TOP&&TOP.rules)||{}, REG=RULES.regWeeks||15, POW=(RULES.poWeeks&&RULES.poWeeks.length)?RULES.poWeeks:[16,17];
+const LASTW=Math.max(REG,...POW);
+function outlook(team){
+  team=team||MY;
+  const games=(TOP.lg&&TOP.lg.games)||[], sd=Math.sqrt(2)*(((TOP.review||{}).outlook||{}).sd||24);
+  const Phi=window.DWR.Phi, out=[];
+  for(let w=WEEK;w<=LASTW;w++){
+    const L=lineupOf(team,w), tot=L.rows.reduce((s,r)=>s+(r.x?r.x.pts:0),0);
+    const holes=L.rows.filter(r=>!r.x||r.x.pts<=0.01).map(r=>({lab:r.lab,p:r.x?r.x.p:null}));
+    const byes=POOL.filter(p=>p.own===team&&p.bye===w);
+    const g=games.find(g=>g.w===w&&(g.h===team||g.a===team));
+    const opp=g?(g.h===team?g.a:g.h):null;
+    const ot=opp?lineupOf(opp,w).rows.reduce((s,r)=>s+(r.x?r.x.pts:0),0):null;
+    out.push({w,tot,holes,byes,opp,ot,po:POW.includes(w),prob:ot!=null&&Phi?Phi((tot-ot)/sd):null,bench:L.bench});
+  }
+  return out;
+}
 /* ---------- render ---------- */
 const WS={pos:'ALL',fa:true};
 function renderMyTeam(){
@@ -215,7 +246,7 @@ function renderMyTeam(){
       <div class="kv"><span>titolari indisponibili</span><b>${rows.filter(r=>r.x&&r.x.pts===0).length}</b></div>
       <div class="verd">${totW>=110?'Formazione competitiva.':'Serve un aiuto dai waiver: la formazione è sotto il livello della lega.'}</div></div>
     <div class="sc"><h4>Rosa</h4><div class="kv"><span>giocatori</span><b>${ros.length}/15+IR</b></div>
-      <div class="kv"><span>proiezione totale</span><b>${n0(ros.reduce((s,p)=>s+p.proj,0))}</b></div>
+      <div class="kv"><span>proiezione resto stagione</span><b>${n0(ros.reduce((s,p)=>s+p.proj,0))}</b></div>
       <div class="verd">${ros.filter(p=>p.inj).length?`${ros.filter(p=>p.inj).length} giocatori con problemi fisici.`:'Nessun problema fisico segnalato.'}</div></div>
     <div class="sc"><h4>Reparti deboli</h4><div class="kv"><span>sotto la media lega</span><b>${holes.length?holes.join(', '):'nessuno'}</b></div>
       <div class="kv"><span>reparto più forte</span><b>${Object.entries(nd).sort((a,b)=>b[1].ratio-a[1].ratio)[0][0]}</b></div>
@@ -251,12 +282,13 @@ function renderMyTeam(){
       <span style="font-size:11.5px;color:var(--k-muted)">${pl.map(p=>`<span class="pos pos-${p.pos}" style="margin-right:3px">${p.pos}</span>${esc(p.name.split(' ').slice(-1)[0])}`).join(' · ')}</span>
       <span class="v" style="color:${pl.length>=4?'var(--offline)':pl.length>=3?'var(--delayed)':'var(--k-muted)'}">${pl.length}</span></div>`}).join('');
 
-  $('#mt-roster').innerHTML=`<thead><tr><th>Giocatore</th><th>Pos</th><th class="num">Atteso/g</th><th class="num">Reale '26</th><th class="num">Δ</th><th class="num">Tgt/g</th><th class="num">Tgt share</th><th class="num">Quota corse</th><th class="num">Snap</th><th class="num">TD</th><th class="num">SOS 3</th><th>Segnali</th></tr></thead><tbody>`+
+  $('#mt-roster').innerHTML=`<thead><tr><th>Giocatore</th><th>Pos</th><th class="num" title="proiezione ESPN sul resto della stagione, a partita">ESPN/g</th><th class="num">Reale '26</th><th class="num">Δ</th><th class="num">Tgt/g</th><th class="num">Tgt share</th><th class="num">Quota corse</th><th class="num">Snap</th><th class="num">TD</th><th class="num">SOS 3</th></tr></thead><tbody>`+
     ros.map(p=>{
       const a26=adv(p,26);
       const d=p.ppg26!=null&&p.exp26?(p.ppg26-p.exp26)/p.exp26:null;
       const s=sos3(p);
-      return`<tr><td data-pid="${p.id}"><b>${esc(p.name)}</b> <span style="color:var(--k-muted)">${p.nfl}${p.bye?' · bye '+p.bye:''}</span></td>
+      const tg=healthTags(p);
+      return`<tr><td style="min-width:200px"><b data-pid="${p.id}">${esc(p.name)}</b> <span style="color:var(--k-muted)">${p.nfl}${p.bye?' · bye '+p.bye:''}</span>${tg?`<span class="sub2">${tg}</span>`:''}</td>
         <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
         <td class="num">${n1(p.exp26)}</td><td class="num"><b>${p.ppg26!=null?n1(p.ppg26):'—'}</b></td>
         <td class="num">${d==null?'—':arrow(d)+' '+(d>0?'+':'')+n0(d*100)+'%'}</td>
@@ -265,16 +297,29 @@ function renderMyTeam(){
         <td class="num">${a26&&a26.rushShare>0.02?pct(a26.rushShare*100):(p.car26?n1(p.car26)+' c/g':'—')}</td>
         <td class="num">${p.snap26!=null?n0(p.snap26)+'%':(a26&&a26.snapPct!=null?n0(a26.snapPct*100)+'%':'—')}</td>
         <td class="num">${(p.rtd26||0)+(p.rutd26||0)}</td>
-        <td class="num" style="color:${s>=1.05?'var(--live)':s<=0.95?'var(--offline)':'var(--k-muted)'}">${f2(s)}</td>
-        <td>${healthTags(p)}</td></tr>`}).join('')+'</tbody>';
+        <td class="num" style="color:${s>=1.05?'var(--live)':s<=0.95?'var(--offline)':'var(--k-muted)'}">${f2(s)}</td></tr>`}).join('')+'</tbody>';
 
   deltaChart(ros);
-  renderWaiverList(nd);
+  { const ol=outlook(MY), el=$('#mt-season');
+    if(el)el.innerHTML=`<thead><tr><th>Sett.</th><th>Avversario</th><th class="num">Tu</th><th class="num">Lui</th><th class="num">Vittoria</th><th>Buchi in formazione e bye</th></tr></thead><tbody>`+
+      ol.map(r=>`<tr class="${r.w===WEEK?'mine':''}"><td><b>${r.w}</b>${r.po?' <span class="tag2 acc">playoff</span>':''}</td>
+        <td>${r.opp?esc(TBY.get(r.opp).name):r.po?'<span style="color:var(--k-muted)">da definire</span>':'—'}</td>
+        <td class="num"><b>${n1(r.tot)}</b></td><td class="num" style="color:var(--k-muted)">${r.ot!=null?n1(r.ot):'—'}</td>
+        <td class="num" style="color:${r.prob==null?'var(--k-muted)':r.prob>=0.6?'var(--live)':r.prob<=0.4?'var(--offline)':'var(--k-ink)'}">${r.prob==null?'—':Math.round(r.prob*100)+'%'}</td>
+        <td style="white-space:normal">${r.holes.length?r.holes.map(h=>`<span class="tag2 bad">${h.lab} ${h.p?esc(h.p.name.split(' ').slice(-1)[0])+(h.p.bye===r.w?' (bye)':h.p.inj?' ('+h.p.inj+')':''):'scoperto'}</span>`).join(' '):'<span style="color:var(--live)">formazione completa</span>'}
+          ${r.byes.filter(p=>!r.holes.some(h=>h.p&&h.p.id===p.id)).length?`<span style="color:var(--k-muted);font-size:11.5px"> · in bye anche ${r.byes.filter(p=>!r.holes.some(h=>h.p&&h.p.id===p.id)).map(p=>esc(p.name.split(' ').slice(-1)[0])).join(', ')}</span>`:''}</td></tr>`).join('')+'</tbody>';
+    const bad=ol.filter(r=>r.holes.length);
+    const n=$('#mt-season-note');
+    if(n)n.innerHTML=bad.length?`<b style="color:var(--offline)">Settimane da sistemare: ${bad.map(r=>r.w).join(', ')}.</b> Un buco in formazione vale zero punti: serve un waiver o un cambio prima del lock.`:'<span style="color:var(--live)">Nessuna settimana con buchi in formazione da qui alla fine.</span>';
+  }
+  { const free=POOL.filter(p=>!p.own&&!['K','DST'].includes(p.pos)).map(p=>({p,w:waiverScore(p,nd)})).sort((a,b)=>b.w.score-a.w.score).slice(0,3);
+    const el=$('#mt-wvlink');
+    if(el&&free.length)el.innerHTML=`Chi prendere e chi tagliare si decide nella pagina Waiver, che prova ogni sostituzione sulla tua formazione. Liberi più interessanti per i tuoi buchi adesso: ${free.map(x=>`<b data-pid="${x.p.id}" style="color:var(--k-ink)">${esc(x.p.name)}</b> (${x.p.pos}, ${x.p.nfl})`).join(', ')}.`; }
 
   const startersIds=new Set(rows.filter(r=>r.x).map(r=>r.x.p.id));
   const stash=ros.filter(p=>['O','IR'].includes(p.inj));
-  const drop=ros.filter(p=>!startersIds.has(p.id)&&!['O','IR'].includes(p.inj)).map(p=>({p,v:basePPG(p)})).sort((a,b)=>a.v-b.v).slice(0,6);
-  $('#mt-drop').innerHTML=`<thead><tr><th>Giocatore</th><th class="num">Valore/g</th><th>Perché</th></tr></thead><tbody>`+
+  const drop=ros.filter(p=>!startersIds.has(p.id)&&!['O','IR'].includes(p.inj)).map(p=>({p,v:restPPG(p)})).sort((a,b)=>a.v-b.v).slice(0,6);
+  $('#mt-drop').innerHTML=`<thead><tr><th>Giocatore</th><th class="num" title="media delle proiezioni ESPN delle prossime giornate, bye esclusa">Valore/g</th><th>Perché</th></tr></thead><tbody>`+
     drop.map(x=>{const p=x.p,ah=ahead(p);
       const why=[p.inj?`fuori (${p.inj})`:'',ah.length>1?`terzo nel reparto ${p.pos} dei ${p.nfl}`:'',p.snap26!=null&&p.snap26<50?'snap sotto il 50%':'',teamRank(p.nfl)>=26?'attacco fra i peggiori':''].filter(Boolean);
       return`<tr><td data-pid="${p.id}">${esc(p.name)} <span class="pos pos-${p.pos}">${p.pos}</span></td><td class="num">${n1(x.v)}</td><td style="color:var(--k-muted)">${why.join(' · ')||'solo riserva'}</td></tr>`}).join('')+
@@ -285,8 +330,8 @@ function renderMyTeam(){
   read.push(`Il tuo reparto migliore è <b>${best[0]}</b> (${n0(best[1].ratio*100)}% della media degli altri tre), il più debole <b>${worst[0]}</b> (${n0(worst[1].ratio*100)}%).`);
   const over=ros.filter(p=>p.ppg26!=null&&p.exp26&&(p.ppg26-p.exp26)/p.exp26>=0.25);
   const under=ros.filter(p=>p.ppg26!=null&&p.exp26&&(p.ppg26-p.exp26)/p.exp26<=-0.3);
-  if(over.length)read.push(`Stanno rendendo sopra le attese: ${over.map(p=>esc(p.name)).join(', ')}. Con due sole giornate è presto per fidarsi: guarda il volume, non i punti.`);
-  if(under.length)read.push(`Sotto le attese: ${under.map(p=>esc(p.name)).join(', ')}. Da tagliare solo se scende anche il volume.`);
+  if(over.length)read.push(`Stanno rendendo sopra la proiezione ESPN: ${over.map(p=>esc(p.name)).join(', ')}. Se il volume (target, corse, snap) regge, il rendimento è reale; se arriva solo dai touchdown, tende a scendere.`);
+  if(under.length)read.push(`Sotto la proiezione ESPN: ${under.map(p=>esc(p.name)).join(', ')}. Da tagliare solo se scende anche il volume.`);
   const injured=ros.filter(p=>p.inj);
   if(injured.length)read.push(`Problemi fisici: ${injured.map(p=>`${esc(p.name)} (${p.inj})`).join(', ')}.`);
   const qbIssues=ros.filter(p=>['WR','TE','RB'].includes(p.pos)&&(()=>{const q=qbOf(p.nfl);return q&&OUT.includes(q.inj)})());
@@ -309,7 +354,7 @@ function deltaChart(ros){
   rows.forEach((p,i)=>{
     const y=T+i*rowH+rowH/2,a=x(p.exp26),b=x(p.ppg26),up=p.ppg26>=p.exp26;
     s+=`<text x="${L-8}" y="${y+3.5}" fill="#B8C3CE" font-size="11" text-anchor="end" data-pid="${p.id}">${esc(p.name)}</text>`;
-    s+=`<line x1="${a.toFixed(1)}" y1="${y}" x2="${b.toFixed(1)}" y2="${y}" stroke="${up?'var(--live)':'var(--offline)'}" stroke-width="3" stroke-linecap="round" opacity=".85"><title>${esc(p.name)}: atteso ${n1(p.exp26)}, reale ${n1(p.ppg26)}</title></line>`;
+    s+=`<line x1="${a.toFixed(1)}" y1="${y}" x2="${b.toFixed(1)}" y2="${y}" stroke="${up?'var(--live)':'var(--offline)'}" stroke-width="3" stroke-linecap="round" opacity=".85"><title>${esc(p.name)}: proiezione ${n1(p.exp26)}, reale ${n1(p.ppg26)}</title></line>`;
     s+=`<circle cx="${a.toFixed(1)}" cy="${y}" r="4" fill="#0A0E13" stroke="#8593A2" stroke-width="2"/>`;
     s+=`<circle cx="${b.toFixed(1)}" cy="${y}" r="4.5" fill="${up?'var(--live)':'var(--offline)'}"/>`;
     s+=`<text x="${W-R+8}" y="${y+3.5}" fill="${up?'var(--live)':'var(--offline)'}" font-size="10.5" font-weight="600">${up?'+':''}${n1(p.ppg26-p.exp26)}</text>`;
@@ -360,12 +405,10 @@ function renderWaiverList(nd){
         <td style="white-space:normal;max-width:38ch;color:var(--k-muted)">${rs.slice(0,4).join(' · ')}</td>
         <td style="color:var(--k-muted)">${dropFor(p.pos)?esc(dropFor(p.pos)):'—'}</td></tr>`}).join('')+'</tbody>';
 }
-function wpChips(){chips($('#mt-wpos'),['ALL','QB','RB','WR','TE'],WS.pos,c=>{WS.pos=c;wpChips();renderWaiverList()})}
-wpChips();
-$('#mt-onlyfa').onchange=e=>{WS.fa=e.target.checked;renderWaiverList()};
+
 
 /* ponte per le pagine di stagione */
-window.DWR3={POOL,lineupOf,weekPts,basePPG,SLOTS,WEEK,injOf,adv,tm,teamRank,sos3,matchup,needs};
+window.DWR3={POOL,lineupOf,weekPts,basePPG,restPPG,outlook,RULES,POW,REG,SLOTS,WEEK,injOf,adv,tm,teamRank,sos3,matchup,needs};
 R.myteam=renderMyTeam;
 if((location.hash||'').slice(1)==='myteam')window.DWR_VIEW('myteam');
 })();

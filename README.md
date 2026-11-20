@@ -83,6 +83,43 @@ va rifatto.
 Escluse di proposito: i campi bonus di Sleeper (regole di punteggio, non statistiche),
 le statistiche IDP (la lega non le usa) e i punteggi in formati diversi dal PPR.
 
+## Questa settimana (`#week`, `web/parts/pU_*.html`)
+
+La pagina di apertura del blocco Stagione: la lista di cose da fare prima del lock, in
+ordine di urgenza (rosso: punti sicuri persi; giallo: da controllare). Titolari schierati
+su ESPN in bye, fuori o a zero, con il sostituto dalla panchina o il miglior libero;
+punti lasciati dalla formazione schierata rispetto a quella migliore; reparti senza
+riserve; giocatori del giovedì; buchi nelle prossime tre giornate; liberi che valgono
+più di un tuo titolare; scadenza degli scambi; priorità e giorni dei waiver; sfida della
+settimana; mosse degli avversari. Sotto: formazione schierata contro migliore, orari
+delle partite in ora italiana, bollettino dei tuoi giocatori, liberi da guardare.
+
+## Lega NFL (`#nflleague`, `web/parts/pU_*.html`)
+
+Classifica per division (da `games.csv`), attacchi e difese a confronto (punti, yard,
+EPA per giocata, ritmo, quota di passaggi, palle perse, sack; da `stats_team_reg`),
+punti fantasy concessi per reparto con la tendenza delle ultime 4 giornate, chi sale e
+chi scende per snap e opportunità (ultime 3 partite contro le precedenti), bollettino
+infortuni dei giocatori della lega, bye che restano. I dati li prepara `nfl_league()` in
+`scripts/build_console.py` (chiave `nfl` del bundle).
+
+## Regole della lega e classifica
+
+`build_console.py` porta nel bundle `rules` (stagione regolare, settimane dei playoff,
+seeding, scadenza scambi, tipo e giorni dei waiver) e `standings` (seed, serie,
+casa/trasferta, priorità waiver, mosse, proiezione ESPN di rango) lette da
+`espn_league.json`. Le pagine non hanno più settimane o scadenze scritte a mano.
+
+Nota sulle proiezioni: in stagione il campo `proj` di ESPN è la proiezione **sul resto
+della stagione NFL** (fino alla 18ª), non sull'intera stagione. A gara si divide per le
+partite che restano al giocatore (`window.DWR_PPG`), non per 17.
+
+## Struttura delle pagine (`web/parts/pS_ui.html`)
+
+Sotto i 1100px le griglie diventano a una colonna; le tabelle che scorrono in
+orizzontale tengono fisso il nome; le tabelle lunghe (`data-clip="N"`) mostrano le prime
+N righe e un pulsante "Mostra tutte" invece di un riquadro con scroll interno.
+
 ## Partite NFL (`#nfl`, `web/parts/pN_*.html`)
 
 Nel blocco Stagione, un riquadro per ogni partita della giornata, quelle in corso in testa:
@@ -116,6 +153,11 @@ contro la tua rosa, con la rosa viva che arriva dal live.
   nel resto della stagione; le mosse di un reparto danno per fatte quelle del piano negli
   altri, così un giocatore che vale zero non viene "tagliato" per ogni libero.
 - **Piano**: fino a quattro mosse in sequenza, ognuna sulla rosa già cambiata.
+- **Confronta su → Partite giocate**: la stessa simulazione (mosse, piano, grafico dei
+  reparti, Δ in tabella) rifatta sulle giornate della finestra "Forma" con i punti veri.
+  Una partita saltata vale la media di stagione del giocatore, così una sola partita
+  nella finestra non diventa la sua media. Accanto a ogni guadagno c'è sempre quello
+  dell'altra base: quando i due non sono d'accordo, la lettura del testa a testa lo dice.
 - **Grafici**: dove i liberi battono i tuoi titolari (per reparto), classifica del
   reparto su 12 misure, volume contro punti (target share per WR/TE, opportunità per i
   RB, yard per i QB), testa a testa con punti e utilizzo giornata per giornata e le

@@ -1,0 +1,83 @@
+<div id="view-week" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2 id="wk-title">Questa settimana</h2><p>Tutto quello che va fatto prima che le partite si blocchino, in ordine di urgenza: titolari in bye o fuori, formazione schierata su ESPN diversa da quella migliore, giocatori del giovedì, infortuni, scadenze di waiver e scambi, mosse degli avversari. Ogni voce porta alla pagina dove si risolve.</p></div>
+  <div class="strip" id="wk-strip"></div>
+  <div class="chartcard" style="margin-bottom:10px">
+    <h3>Da fare</h3>
+    <p class="cn">Rosso: costa punti sicuri se non lo sistemi. Giallo: da controllare prima della partita. Verde: tutto a posto.</p>
+    <ul class="todo" id="wk-todo"></ul>
+  </div>
+  <div class="an-grid" style="grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)">
+    <div class="chartcard">
+      <h3>Formazione schierata su ESPN e formazione migliore</h3>
+      <p class="cn">A sinistra quello che hai messo su ESPN, a destra la formazione con più punti attesi (proiezione ESPN della giornata). Le righe evidenziate sono quelle da cambiare.</p>
+      <div class="tscroll"><table class="antable" id="wk-lineup"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Quando giocano</h3>
+      <p class="cn">Le partite dei tuoi titolari e di quelli dell'avversario, in ora italiana. Chi gioca prima si blocca prima.</p>
+      <div class="tscroll"><table class="antable" id="wk-when"></table></div>
+    </div>
+  </div>
+  <div class="an-grid" style="margin-top:10px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+    <div class="chartcard">
+      <h3>Bollettino dei tuoi giocatori</h3>
+      <p class="cn">Ultimo report NFL della settimana: stato per la partita e partecipazione agli allenamenti (piena, ridotta, assente).</p>
+      <div class="tscroll"><table class="antable" id="wk-inj"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Liberi da guardare</h3>
+      <p class="cn">I liberi che valgono più del tuo titolare più debole nello stesso reparto (media delle proiezioni ESPN delle prossime giornate), più quelli che il resto del mondo sta prendendo nelle ultime 24 ore.</p>
+      <div class="tscroll"><table class="antable" id="wk-free" data-clip="10"></table></div>
+    </div>
+  </div>
+  <div class="chartcard" style="margin-top:10px">
+    <h3>Mosse della lega negli ultimi 7 giorni</h3>
+    <p class="cn">Chi si è mosso e cosa ha preso: dice dove gli altri si sentono scoperti.</p>
+    <div class="tscroll"><table class="antable" id="wk-tx"></table></div>
+  </div>
+</div>
+</div>
+
+<div id="view-nflleague" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2>Lega NFL</h2><p>Il campionato vero, letto per il fantasy: classifica per division, attacchi e difese a confronto (punti, yard, EPA, ritmo, quota di passaggi), punti fantasy concessi a ogni reparto con la tendenza delle ultime quattro giornate, chi sta guadagnando o perdendo spazio in campo, bollettino infortuni e bye che restano. Fonte: nflverse (risultati, statistiche di squadra e giocatore, snap, report medici) e calendario ESPN.</p></div>
+  <div class="chartcard" style="margin-bottom:10px">
+    <h3>Classifica per division</h3>
+    <p class="cn">Vinte-perse, punti fatti e subiti, ultime cinque (la più recente a destra). Il numero blu è quanti tuoi giocatori ha quella squadra.</p>
+    <div class="nfl-div" id="nl-div"></div>
+  </div>
+  <div class="chartcard" style="margin-bottom:10px">
+    <h3>Attacchi e difese</h3>
+    <p class="cn">Tocca un'intestazione per ordinare. EPA per giocata: quanto ogni azione avvicina al punto (sopra zero è un attacco efficiente). Ritmo: giocate d'attacco a partita, più giocate vuol dire più occasioni per tutti. Il colore segna il terzo migliore e il terzo peggiore della lega.</p>
+    <div class="tscroll"><table class="antable" id="nl-off" data-clip="12"></table></div>
+  </div>
+  <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+    <div class="chartcard">
+      <h3>Punti fantasy concessi</h3>
+      <p class="cn">Punti PPR concessi a partita da ogni difesa, rapportati alla media della lega: 1,00 è la media, sopra è una difesa da attaccare. "Ultime 4" è la stessa cosa sulle ultime quattro giornate: la freccia dice se la difesa sta peggiorando (▲, più punti concessi) o migliorando (▼).</p>
+      <div class="an-bar" style="margin:0 0 8px;background:transparent;border:0;padding:0"><div class="chips" id="nl-fpos"></div></div>
+      <div class="tscroll"><table class="antable" id="nl-fpa" data-clip="12"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Chi sale e chi scende</h3>
+      <p class="cn">Snap e opportunità (target più corse) nelle ultime tre partite giocate contro la media delle precedenti. Un ruolo che cresce anticipa i punti; uno che cala li toglie prima che si veda nel punteggio.</p>
+      <div class="an-bar" style="margin:0 0 8px;background:transparent;border:0;padding:0"><div class="chips" id="nl-rpos"></div><div class="chips" id="nl-rdir"></div></div>
+      <div class="tscroll"><table class="antable" id="nl-radar" data-clip="12"></table></div>
+    </div>
+  </div>
+  <div class="an-grid" style="margin-top:10px;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)">
+    <div class="chartcard">
+      <h3>Bollettino infortuni</h3>
+      <p class="cn">Ultimo report medico per i giocatori nelle rose della lega e per i liberi rilevanti. Prima i tuoi, poi quelli degli avversari, poi i liberi.</p>
+      <div class="an-bar" style="margin:0 0 8px;background:transparent;border:0;padding:0"><div class="chips" id="nl-iown"></div></div>
+      <div class="tscroll"><table class="antable" id="nl-inj" data-clip="15"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Bye che restano</h3>
+      <p class="cn">Le squadre NFL a riposo in ogni giornata rimasta e quanti giocatori perde ogni squadra della lega.</p>
+      <div class="tscroll"><table class="antable" id="nl-bye"></table></div>
+    </div>
+  </div>
+</div>
+</div>

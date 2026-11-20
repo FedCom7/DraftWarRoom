@@ -8,17 +8,22 @@
     <label><input type="checkbox" id="tm-bench" checked> Mostra la panchina</label>
     <span class="sp" id="tm-when"></span>
   </div>
+  <div class="chartcard" style="margin-bottom:10px">
+    <h3>Classifica</h3>
+    <p class="cn">Come la tiene ESPN: il seed è deciso dal record negli scontri diretti, e ai playoff vanno tutte e quattro (1ª contro 4ª, 2ª contro 3ª). Contano quindi il seed e i punti, non la qualificazione. Proiezione ESPN: dove ESPN vede la squadra a fine stagione, e dove la vedeva il giorno del draft.</p>
+    <div class="tscroll"><table class="antable" id="tm-stand"></table></div>
+  </div>
   <div id="tm-matchups" class="strip"></div>
   <div class="an-grid" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);margin-bottom:10px">
     <div class="chartcard">
       <h3>Le partite NFL della giornata</h3>
       <p class="cn">Quote e meteo da ESPN. Il numero grande è il <b>totale implicito</b>: quanti punti il mercato si aspetta da quell'attacco. Sopra 26 è un contesto da fantasy, sotto 18 è una partita chiusa.</p>
-      <div style="overflow:auto;max-height:260px"><table class="antable" id="tm-games"></table></div>
+      <div class="tscroll"><table class="antable" id="tm-games" data-clip="8"></table></div>
     </div>
     <div class="chartcard">
       <h3>Ultimi movimenti della lega</h3>
       <p class="cn">Aggiunte e tagli registrati su ESPN, dal più recente.</p>
-      <div style="overflow:auto;max-height:260px"><table class="antable" id="tm-tx"></table></div>
+      <div class="tscroll"><table class="antable" id="tm-tx" data-clip="8"></table></div>
     </div>
   </div>
   <div class="an-grid" style="grid-template-columns:repeat(auto-fit,minmax(330px,1fr))" id="tm-grid"></div>

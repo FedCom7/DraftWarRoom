@@ -149,6 +149,77 @@ def nfl_context(season):
     return sched, teams
 
 
+DIVISIONS = {
+    "AFC East": ["BUF", "MIA", "NE", "NYJ"], "AFC North": ["BAL", "CIN", "CLE", "PIT"],
+    "AFC South": ["HOU", "IND", "JAX", "TEN"], "AFC West": ["DEN", "KC", "LV", "LAC"],
+    "NFC East": ["DAL", "NYG", "PHI", "WSH"], "NFC North": ["CHI", "DET", "GB", "MIN"],
+    "NFC South": ["ATL", "CAR", "NO", "TB"], "NFC West": ["ARI", "LAR", "SF", "SEA"],
+}
+
+
+def nfl_league(season):
+    """Classifica NFL, attacchi e difese a confronto, punti fantasy concessi nelle ultime giornate."""
+    games = [g for g in rows(os.path.join(RAW, "nflverse", "games.csv"))
+             if int(g["season"] or 0) == season and (g.get("game_type") or "REG") == "REG"]
+    st = {a: {"w": 0, "l": 0, "t": 0, "pf": 0, "pa": 0, "dw": 0, "dl": 0, "res": []}
+          for teams_ in DIVISIONS.values() for a in teams_}
+    kick = {}
+    for g in sorted(games, key=lambda g: int(g["week"])):
+        h, a = ab(g["home_team"]), ab(g["away_team"])
+        wk = int(g["week"])
+        kick.setdefault(wk, {})[h] = kick.setdefault(wk, {})[a] = g.get("weekday") or ""
+        hs, as_ = num(g, "home_score"), num(g, "away_score")
+        if hs is None or as_ is None or h not in st or a not in st:
+            continue
+        div = g.get("div_game") == "1"
+        for me, ms, os_ in ((h, hs, as_), (a, as_, hs)):
+            e = st[me]
+            e["pf"] += ms; e["pa"] += os_
+            r = "W" if ms > os_ else "L" if ms < os_ else "T"
+            e[{"W": "w", "L": "l", "T": "t"}[r]] += 1
+            if div and r != "T":
+                e["dw" if r == "W" else "dl"] += 1
+            e["res"].append([wk, r, int(ms), int(os_)])
+    for e in st.values():
+        e["pf"], e["pa"] = int(e["pf"]), int(e["pa"])
+        e["last"] = "".join(r[1] for r in e["res"][-5:])
+    # attacco e difesa dalle statistiche di squadra nflverse
+    tm = {ab(r["team"]): r for r in rows(os.path.join(RAW, "nflverse", f"stats_team_reg_{season}.csv"))
+          if (r.get("season_type") or "REG") == "REG"}
+    off = {}
+    for a, r in tm.items():
+        g = num(r, "games") or 1
+        att, car, sk = num(r, "attempts") or 0, num(r, "carries") or 0, num(r, "sacks_suffered") or 0
+        plays = att + car + sk
+        epa = (num(r, "passing_epa") or 0) + (num(r, "rushing_epa") or 0)
+        off[a] = {
+            "plays": rnd(plays / g, 1), "passRate": rnd(att / (att + car) * 100, 1) if att + car else None,
+            "ypg": rnd(((num(r, "passing_yards") or 0) + (num(r, "rushing_yards") or 0)) / g, 0),
+            "passYpg": rnd((num(r, "passing_yards") or 0) / g, 0), "rushYpg": rnd((num(r, "rushing_yards") or 0) / g, 0),
+            "epaPlay": rnd(epa / plays, 3) if plays else None,
+            "tdpg": rnd(((num(r, "passing_tds") or 0) + (num(r, "rushing_tds") or 0)) / g, 2),
+            "to": rnd(((num(r, "passing_interceptions") or 0) + (num(r, "fumbles_lost_total") or 0)) / g, 2),
+            "sacksTaken": rnd(sk / g, 1),
+            "defSack": rnd((num(r, "def_sacks") or 0) / g, 1),
+            "defTo": rnd(((num(r, "def_interceptions") or 0) + (num(r, "fumble_recovery_opp") or 0)) / g, 2),
+        }
+    for a, e in st.items():
+        e.update(off.get(a, {}))
+    # punti fantasy concessi giornata per giornata: servono per la tendenza recente
+    per = defaultdict(lambda: defaultdict(lambda: defaultdict(float)))
+    for r in rows(os.path.join(RAW, "nflverse", f"stats_player_week_{season}.csv")):
+        pos, opp = r.get("position"), r.get("opponent_team")
+        if pos in ("QB", "RB", "WR", "TE") and opp:
+            per[ab(opp)][int(r["week"])][pos] += num(r, "fantasy_points_ppr") or 0
+    recent = {}
+    for t, wks in per.items():
+        last = sorted(wks)[-4:]
+        recent[t] = {pos: rnd(statistics.mean(wks[w][pos] for w in last), 1) for pos in ("QB", "RB", "WR", "TE")}
+    lg_recent = {pos: rnd(statistics.mean(v[pos] for v in recent.values()), 1) for pos in ("QB", "RB", "WR", "TE")} if recent else {}
+    return {"div": DIVISIONS, "teams": st, "fpaRecent": recent, "fpaRecentLeague": lg_recent,
+            "weekday": {str(w): v for w, v in kick.items()}}
+
+
 def fantasy_allowed(season):
     """Punti PPR concessi da ogni difesa per reparto, come rapporto sulla media."""
     per_game = defaultdict(lambda: defaultdict(float))
@@ -939,6 +1010,41 @@ def league_data(season):
         "scoring": lg["settings"]["scoringSettings"].get("playerRankType"),
         "myTeam": MY_TEAM,
     }
+    # regole che contano durante la stagione: playoff, waiver, scadenza scambi
+    ss = lg["settings"].get("scheduleSettings") or {}
+    acq = lg["settings"].get("acquisitionSettings") or {}
+    trd = lg["settings"].get("tradeSettings") or {}
+    reg = ss.get("matchupPeriodCount") or 15
+    po_len = ss.get("playoffMatchupPeriodLength") or 1
+    po_teams = ss.get("playoffTeamCount") or 4
+    po_rounds = max(1, (po_teams - 1).bit_length())
+    meta["rules"] = {
+        "regWeeks": reg,
+        "poWeeks": list(range(reg + 1, reg + 1 + po_rounds * po_len)),
+        "poTeams": po_teams,
+        "seeding": ss.get("playoffSeedingRule"),
+        "tradeDeadline": trd.get("deadlineDate"),
+        "vetoVotes": trd.get("vetoVotesRequired"),
+        "waiverType": acq.get("acquisitionType"),
+        "waiverHours": acq.get("waiverHours"),
+        "waiverDays": acq.get("waiverProcessDays") or [],
+        "waiverHour": acq.get("waiverProcessHour"),
+        "faab": bool(acq.get("isUsingAcquisitionBudget")),
+    }
+    # classifica come la tiene ESPN: seed, striscia, casa/trasferta, mosse
+    meta["standings"] = {}
+    for t in lg["teams"]:
+        r = t.get("record") or {}
+        o, hm, aw = r.get("overall") or {}, r.get("home") or {}, r.get("away") or {}
+        tc = t.get("transactionCounter") or {}
+        meta["standings"][t["id"]] = {
+            "seed": t.get("playoffSeed"), "gb": o.get("gamesBack"),
+            "streak": (o.get("streakType") or "")[:1] + str(o.get("streakLength") or 0),
+            "home": f'{hm.get("wins", 0)}-{hm.get("losses", 0)}', "away": f'{aw.get("wins", 0)}-{aw.get("losses", 0)}',
+            "waiver": t.get("waiverRank"), "adds": tc.get("acquisitions"), "drops": tc.get("drops"),
+            "trades": tc.get("trades"), "ir": tc.get("moveToIR"), "moves": tc.get("moveToActive"),
+            "projRank": t.get("currentProjectedRank"), "draftRank": t.get("draftDayProjectedRank"),
+        }
     return meta, roster, rec, games, dict(weekly), picks, lineups
 
 
@@ -1225,6 +1331,7 @@ def main():
         "sched": {k: {"bye": v["bye"], "opp": {str(w): o for w, o in v["opp"].items()}}
                   for k, v in sched.items()},
         "fpa": fpa_cur, "fpaPrev": fpa_prev, "fpaLeague": {"cur": lg_cur, "prev": lg_prev},
+        "nfl": nfl_league(y),
         "adv": {str(y): adv_cur, str(y - 1): adv_prev},
         "inj": inj,
         "stats": stats,

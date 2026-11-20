@@ -245,9 +245,9 @@ function html(p){
         <span>${own?`in rosa a ${esc(own.name)}`:'libero nella lega'}</span>
         ${p.pct!=null?`<span>posseduto nel ${n0(p.pct)}% delle leghe ESPN</span>`:''}</div></div>
     <div class="pm-big">
-      <div><b style="color:var(--k-y)">${n0(p.proj)}</b><small>proiezione 2026</small></div>
-      <div><b>${n1(p.proj/17)}</b><small>attesi a gara</small></div>
-      <div><b style="color:${(p.ppg26||0)>=p.proj/17?'var(--live)':'var(--offline)'}">${p.ppg26!=null?n1(p.ppg26):'—'}</b><small>reali 2026</small></div>
+      <div><b style="color:var(--k-y)">${n0(p.proj)}</b><small>proiezione resto stagione</small></div>
+      <div><b>${n1(window.DWR_PPG?window.DWR_PPG(p):p.proj/17)}</b><small>attesi a gara</small></div>
+      <div><b style="color:${(p.ppg26||0)>=(window.DWR_PPG?window.DWR_PPG(p):p.proj/17)?'var(--live)':'var(--offline)'}">${p.ppg26!=null?n1(p.ppg26):'—'}</b><small>reali 2026</small></div>
       <div><b>${sv(vorpOf(p))}</b><small>VORP lega</small></div>
     </div>
   </div>

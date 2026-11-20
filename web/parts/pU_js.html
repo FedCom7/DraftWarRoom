@@ -1,0 +1,280 @@
+<style>
+.console .todo{list-style:none;margin:0;padding:0;display:grid;gap:6px}
+.console .todo li{display:grid;grid-template-columns:10px minmax(0,1fr) auto;gap:10px;align-items:start;padding:8px 10px;border-radius:8px;background:var(--k-bg);border:1px solid var(--k-line);font-size:13px;line-height:1.45}
+.console .todo li i{width:10px;height:10px;border-radius:50%;margin-top:4px;background:var(--live)}
+.console .todo li.bad i{background:var(--offline)}
+.console .todo li.warn i{background:var(--delayed)}
+.console .todo li.info i{background:var(--k-muted)}
+.console .todo li small{display:block;color:var(--k-muted);font-size:11.5px;margin-top:2px}
+.console .todo li a{font:600 11.5px var(--sans);color:var(--k-y);text-decoration:none;white-space:nowrap}
+.console tr.chg td{background:color-mix(in srgb,var(--offline) 10%,transparent)}
+.console .nfl-div{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,280px),1fr));gap:10px}
+.console .nfl-div table{font-size:12px}
+.console .nfl-div h4{margin:0 0 4px;font:600 10.5px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--k-muted)}
+.console .wl{font:600 11px var(--mono);letter-spacing:.04em}
+.console .wl .W{color:var(--live)} .console .wl .L{color:var(--offline)} .console .wl .T{color:var(--k-muted)}
+.console .mineN{display:inline-block;min-width:16px;padding:0 4px;border-radius:8px;background:color-mix(in srgb,var(--k-me) 22%,transparent);color:var(--k-me);font:600 10px/1.6 var(--mono);text-align:center;margin-left:4px}
+.console #nl-off th[data-k]{cursor:pointer}
+.console #nl-off th.on{color:var(--k-y)}
+.console td.hi{color:var(--live)} .console td.lo{color:var(--offline)}
+</style>
+<script>
+(()=>{
+'use strict';
+const D=window.DWR,A=window.DWR2,M=window.DWR3;
+const {TBY,MY,esc}=D;const {POSC,n0,n1,R,chips}=A;
+const {POOL,lineupOf,restPPG,outlook,injOf,WEEK}=M;
+const $=(s,r=document)=>r.querySelector(s);
+const TOP=window.TOPINA;
+const OUT=['O','IR','D','SUS'];
+const pOf=id=>POOL.find(x=>x.id===id);
+const last=n=>(n||'').split(' ').slice(-1)[0];
+const ab=t=>t?esc((TBY.get(t)||{}).abbr||t):'';
+const nmT=t=>t?esc((TBY.get(t)||{}).name||t):'';
+const DAYIT={Thursday:'giovedì',Friday:'venerdì',Saturday:'sabato',Sunday:'domenica',Monday:'lunedì',Tuesday:'martedì',Wednesday:'mercoledì'};
+const kickOf=(nfl,w)=>{const g=((TOP.games||{})[nfl]||{})[String(w)];return g&&g.kick?new Date(/T\d\d:\d\dZ$/.test(g.kick)?g.kick.replace('Z',':00Z'):g.kick):null};
+const fmtKick=d=>d&&!isNaN(d)?d.toLocaleString('it-IT',{weekday:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—';
+const stateOf=nfl=>(TOP.gameState||{})[nfl]||{};
+const ownTag=p=>p.own===MY?'<span class="tag2" style="color:var(--k-me)">tuo</span>':p.own?`<span class="tag2">${ab(p.own)}</span>`:'<span class="tag2 acc">libero</span>';
+const posTag=pos=>`<span class="pos pos-${pos}">${pos}</span>`;
+
+/* ================= QUESTA SETTIMANA ================= */
+function setLineup(t){return((TOP.lg||{}).lineups||{})[String(t)]||[]}
+function renderWeek(){
+  const W=TOP.week||WEEK, R0=TOP.rules||{}, ST=TOP.standings||{};
+  const games=(TOP.lg||{}).games||[];
+  const g=games.find(x=>x.w===W&&(x.h===MY||x.a===MY)), opp=g?(g.h===MY?g.a:g.h):null;
+  const ol=outlook(MY), cur=ol.find(r=>r.w===W)||{};
+  $('#wk-title').textContent=`Questa settimana · giornata ${W}`;
+
+  /* formazione schierata contro formazione migliore */
+  const set=setLineup(MY), best=lineupOf(MY,W);
+  const projOf=r=>{const p=pOf(r.id);return p?M.weekPts(p,W):0};
+  const setSt=set.filter(r=>r.starter&&r.slot!=='IR');
+  const setTot=setSt.reduce((s,r)=>s+projOf(r),0), bestTot=best.rows.reduce((s,r)=>s+(r.x?r.x.pts:0),0);
+  const bestIds=new Set(best.rows.filter(r=>r.x).map(r=>r.x.p.id));
+  const slotOrder=['QB','RB','RB','RB/WR','WR','WR','TE','D/ST','K'];
+  const pool=[...setSt];
+  const setBySlot=slotOrder.map(sl=>{const i=pool.findIndex(r=>r.slot===sl||(sl==='RB/WR'&&r.slot==='FLEX'));return i<0?null:pool.splice(i,1)[0]});
+  $('#wk-lineup').innerHTML=`<thead><tr><th>Slot</th><th>Schierato su ESPN</th><th class="num">Attesi</th><th>Formazione migliore</th><th class="num">Attesi</th></tr></thead><tbody>`+
+    best.rows.map((b,i)=>{const s=setBySlot[i],sp=s?pOf(s.id):null,sv=s?projOf(s):0,bp=b.x?b.x.p:null,bv=b.x?b.x.pts:0;
+      const chg=(sp?sp.id:null)!==(bp?bp.id:null)&&Math.abs(bv-sv)>=0.5;
+      const why=sp?(sp.bye===W?' <span class="tag2 bad">bye</span>':OUT.includes(s.inj||sp.inj)?` <span class="tag2 bad">${esc(s.inj||sp.inj)}</span>`:(s.inj||sp.inj)==='Q'?' <span class="tag2 warn">Q</span>':''):'';
+      return`<tr class="${chg?'chg':''}"><td><b>${b.lab}</b></td>
+        <td>${sp?`<span data-pid="${sp.id}">${esc(sp.name)}</span> <small style="color:var(--k-muted)">${sp.nfl}</small>${why}`:'<span style="color:var(--offline)">vuoto</span>'}</td>
+        <td class="num">${n1(sv)}</td>
+        <td>${bp?`<span data-pid="${bp.id}">${esc(bp.name)}</span> <small style="color:var(--k-muted)">${bp.nfl}</small>${bp.own!==MY?' <span class="tag2 acc">libero</span>':''}`:'<span style="color:var(--offline)">nessuno disponibile</span>'}</td>
+        <td class="num"><b>${n1(bv)}</b></td></tr>`}).join('')+
+    `<tr><td><b>Totale</b></td><td></td><td class="num"><b>${n1(setTot)}</b></td><td style="color:${bestTot-setTot>=1?'var(--offline)':'var(--k-muted)'}">${bestTot-setTot>=1?`lasci ${n1(bestTot-setTot)} punti attesi in panchina`:'la formazione è già la migliore'}</td><td class="num"><b>${n1(bestTot)}</b></td></tr></tbody>`;
+
+  /* quando giocano: titolari tuoi e dell'avversario per orario */
+  const oppSet=opp?setLineup(opp).filter(r=>r.starter):[];
+  const rows=[...setSt.map(r=>({r,side:'tu'})),...oppSet.map(r=>({r,side:ab(opp)}))].map(x=>({...x,p:pOf(x.r.id)})).filter(x=>x.p&&x.p.bye!==W)
+    .map(x=>({...x,k:kickOf(x.p.nfl,W)})).sort((a,b)=>(a.k||0)-(b.k||0));
+  $('#wk-when').innerHTML=`<thead><tr><th>Quando</th><th>Giocatore</th><th>Di chi</th><th>Partita</th></tr></thead><tbody>`+
+    rows.map(x=>{const st=stateOf(x.p.nfl),m=((TOP.games||{})[x.p.nfl]||{})[String(W)]||{};
+      return`<tr class="${x.side==='tu'?'mine':''}"><td style="white-space:nowrap">${st.state==='in'?`<span class="tag2 good">${esc(st.detail||'in corso')}</span>`:st.state==='post'?'<span class="tag2">finita</span>':fmtKick(x.k)}</td>
+        <td>${posTag(x.p.pos)} <span data-pid="${x.p.id}">${esc(x.p.name)}</span></td><td>${x.side}</td>
+        <td style="color:var(--k-muted)">${x.p.nfl} ${m.home===false?'a':'contro'} ${esc(m.opp||'')}${m.implied!=null?` · ${m.implied} attesi`:''}</td></tr>`}).join('')+'</tbody>';
+
+  /* bollettino */
+  const mine=POOL.filter(p=>p.own===MY);
+  const injRows=mine.map(p=>({p,ij:injOf(p)})).filter(x=>x.p.inj||(x.ij&&(x.ij.s||/Limited|Did Not/i.test(x.ij.pr||''))&&x.ij.w>=W-1));
+  const prIt=pr=>!pr?'—':/Did Not/i.test(pr)?'<span style="color:var(--offline)">assente</span>':/Limited/i.test(pr)?'<span style="color:var(--delayed)">ridotto</span>':/Full/i.test(pr)?'<span style="color:var(--live)">pieno</span>':esc(pr);
+  $('#wk-inj').innerHTML=`<thead><tr><th>Giocatore</th><th>Stato</th><th>Infortunio</th><th>Allenamento</th><th>Partita</th></tr></thead><tbody>`+
+    (injRows.length?injRows.map(({p,ij})=>{const s=p.inj||(ij&&ij.s)||'';
+      return`<tr><td>${posTag(p.pos)} <span data-pid="${p.id}">${esc(p.name)}</span></td>
+        <td><span class="tag2 ${OUT.includes(s)?'bad':s?'warn':''}">${esc(s||'—')}</span></td><td>${ij&&ij.i?esc(ij.i):'—'}</td>
+        <td>${prIt(ij&&ij.pr)}${ij&&ij.w?` <small style="color:var(--k-muted)">s${ij.w}</small>`:''}</td>
+        <td style="color:var(--k-muted);white-space:nowrap">${p.bye===W?'bye':fmtKick(kickOf(p.nfl,W))}</td></tr>`}).join('')
+      :'<tr><td colspan="5" style="color:var(--live)">Nessun tuo giocatore nel bollettino.</td></tr>')+'</tbody>';
+
+  /* liberi da guardare */
+  const starters=best.rows.filter(r=>r.x).map(r=>r.x.p);
+  const weakest={};['QB','RB','WR','TE','K','DST'].forEach(pos=>{const v=starters.filter(p=>p.pos===pos).map(restPPG);weakest[pos]=v.length?Math.min(...v):0});
+  const TR=TOP.trending||{};
+  const free=POOL.filter(p=>!p.own).map(p=>({p,v:restPPG(p),wk:M.weekPts(p,W),add:(TR[p.id]||{}).add||0}))
+    .filter(x=>x.v>weakest[x.p.pos]+0.5||x.add>=40000).sort((a,b)=>(b.v-weakest[b.p.pos])-(a.v-weakest[a.p.pos])).slice(0,30);
+  $('#wk-free').innerHTML=`<thead><tr><th>Libero</th><th class="num">Prossime/g</th><th class="num">Δ tuo titolare</th><th class="num">Questa sett.</th><th class="num">+24h</th></tr></thead><tbody>`+
+    (free.length?free.map(x=>{const d=x.v-weakest[x.p.pos];
+      return`<tr><td>${posTag(x.p.pos)} <span data-pid="${x.p.id}">${esc(x.p.name)}</span> <small style="color:var(--k-muted)">${x.p.nfl}${x.p.inj?' · '+x.p.inj:''}${x.p.bye===W?' · bye':''}</small></td>
+        <td class="num"><b>${n1(x.v)}</b></td><td class="num" style="color:${d>0.4?'var(--live)':'var(--k-muted)'}">${d>0?'+':''}${n1(d)}</td>
+        <td class="num">${n1(x.wk)}</td><td class="num" style="color:var(--k-muted)">${x.add?(x.add>=1000?Math.round(x.add/1000)+'k':x.add):'—'}</td></tr>`}).join('')
+      :'<tr><td colspan="5" style="color:var(--k-muted)">Nessun libero supera i tuoi titolari.</td></tr>')+'</tbody>';
+
+  /* movimenti degli ultimi 7 giorni */
+  const now=Date.now(), TX=(TOP.transactions||[]).filter(t=>t.date&&now-t.date<=7*864e5);
+  const nm=id=>{const p=pOf(id);return p?`${posTag(p.pos)} ${esc(p.name)}`:'#'+id};
+  $('#wk-tx').innerHTML=`<thead><tr><th>Quando</th><th>Squadra</th><th>Preso</th><th>Lasciato</th></tr></thead><tbody>`+
+    (TX.length?TX.map(t=>`<tr class="${t.team===MY?'mine':''}"><td style="white-space:nowrap">${new Date(t.date).toLocaleDateString('it-IT',{weekday:'short',day:'numeric',month:'short'})}</td>
+      <td>${nmT(t.team)}</td><td>${t.add.map(nm).join('<br>')||'—'}</td><td style="color:var(--k-muted)">${t.drop.map(nm).join('<br>')||'—'}</td></tr>`).join('')
+      :'<tr><td colspan="4" style="color:var(--k-muted)">Nessun movimento negli ultimi 7 giorni.</td></tr>')+'</tbody>';
+
+  /* ---- la lista delle cose da fare ---- */
+  const todo=[];
+  const add=(lvl,txt,sub,link,ll)=>todo.push({lvl,txt,sub,link,ll});
+  // 1. titolari che valgono zero
+  setSt.forEach(r=>{const p=pOf(r.id);if(!p)return;const s=r.inj||p.inj;
+    /* sostituto: prima dalla panchina (chi entra nella formazione migliore), poi il libero migliore */
+    const EL={QB:['QB'],RB:['RB'],WR:['WR'],TE:['TE'],'RB/WR':['RB','WR'],FLEX:['RB','WR','TE'],'D/ST':['DST'],K:['K']}[r.slot]||[p.pos];
+    const inSet=new Set(setSt.map(x=>x.id));
+    const bench=best.rows.filter(b=>b.x&&!inSet.has(b.x.p.id)&&EL.includes(b.x.p.pos)&&b.x.pts>0).map(b=>b.x).sort((a,b)=>b.pts-a.pts)[0]
+      ||mine.filter(q=>!inSet.has(q.id)&&EL.includes(q.pos)).map(q=>({p:q,pts:M.weekPts(q,W)})).filter(x=>x.pts>0).sort((a,b)=>b.pts-a.pts)[0];
+    const fa=POOL.filter(q=>!q.own&&EL.includes(q.pos)).map(q=>({p:q,pts:M.weekPts(q,W)})).sort((a,b)=>b.pts-a.pts)[0];
+    const rp=bench?bench.p:fa?fa.p:null;
+    const fix=bench?`Metti ${esc(bench.p.name)} dalla panchina (${n1(bench.pts)} attesi).${fa&&fa.pts>bench.pts+2?` Meglio ancora il libero ${esc(fa.p.name)} (${fa.p.nfl}, ${n1(fa.pts)}).`:''}`
+      :fa?`In rosa non hai un sostituto: il miglior libero è ${esc(fa.p.name)} (${fa.p.nfl}, ${n1(fa.pts)} attesi).`:'';
+    if(p.bye===W)add('bad',`<b>${esc(p.name)}</b> (${r.slot}) è titolare ma è in <b>bye</b>.`,fix,rp&&rp.own!==MY?'waiver':'myteam',rp&&rp.own!==MY?'Waiver':'La mia rosa');
+    else if(OUT.includes(s))add(s==='D'?'warn':'bad',`<b>${esc(p.name)}</b> (${r.slot}) è <b>${esc(s)}</b>${s==='D'?' (in dubbio, probabilmente fuori)':''}.`,fix,'myteam','La mia rosa');
+    else if(s==='Q')add('warn',`<b>${esc(p.name)}</b> (${r.slot}) è in dubbio (Q).`,`Controlla il report prima di ${fmtKick(kickOf(p.nfl,W))}: se non gioca, l'alternativa migliore in rosa è già nella formazione consigliata.`,'week','—');
+  });
+  // 2. formazione non ottimale
+  if(bestTot-setTot>=1)add('bad',`La formazione schierata su ESPN lascia <b>${n1(bestTot-setTot)} punti attesi</b> rispetto a quella migliore.`,`Cambi segnati in rosso nella tabella qui sotto (${n1(setTot)} contro ${n1(bestTot)}).`,'week','—');
+  // 3. reparti senza riserve (QB singolo, TE singolo…)
+  ['QB','TE'].forEach(pos=>{const n=mine.filter(p=>p.pos===pos&&!OUT.includes(p.inj)).length;
+    if(n===0)add('bad',`Non hai un <b>${pos}</b> disponibile in rosa.`,'Serve un waiver prima della partita.','waiver','Waiver');});
+  // 4. giovedì
+  const thu=setSt.map(r=>pOf(r.id)).filter(p=>p&&p.bye!==W&&(((TOP.nfl||{}).weekday||{})[String(W)]||{})[p.nfl]==='Thursday');
+  if(thu.length){const k=kickOf(thu[0].nfl,W),st=stateOf(thu[0].nfl);
+    add(st.state==='pre'?'warn':'info',`Giocano <b>giovedì sera</b> (notte fra giovedì e venerdì in Italia): ${thu.map(p=>esc(p.name)).join(', ')}.`,st.state==='pre'?`Si bloccano al calcio d'inizio, ${fmtKick(k)}: le decisioni su di loro vanno prese prima.`:'Partita già iniziata: sono bloccati.','week','—')}
+  // 5. le prossime settimane con buchi
+  const holes=ol.filter(r=>r.w>W&&r.w<=W+3&&r.holes.length);
+  if(holes.length)add('warn',`Buchi in formazione nelle prossime settimane: ${holes.map(r=>`<b>s${r.w}</b> (${r.holes.map(h=>h.lab+(h.p?' '+esc(last(h.p.name)):'')).join(', ')})`).join(' · ')}.`,'Bye o infortuni: si coprono con la panchina o con un waiver prima che arrivino.','myteam','La mia rosa');
+  // 6. liberi che battono un titolare
+  const top=free.filter(x=>x.v-weakest[x.p.pos]>=1.5).slice(0,3);
+  if(top.length)add('warn',`Liberi che valgono più di un tuo titolare: ${top.map(x=>`<b>${esc(x.p.name)}</b> (${x.p.pos}, +${n1(x.v-weakest[x.p.pos])}/g)`).join(', ')}.`,'La pagina Waiver prova ogni sostituzione e dice chi tagliare.','waiver','Waiver');
+  // 7. scadenza scambi
+  if(R0.tradeDeadline){const days=Math.ceil((R0.tradeDeadline-now)/864e5);
+    if(days>0&&days<=21)add(days<=7?'bad':'warn',`Scadenza scambi tra <b>${days} giorni</b> (${new Date(R0.tradeDeadline).toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'})}).`,'Dopo non si scambia più fino a fine stagione: se ti serve un QB o un TE, è adesso.','trades','Scambi');}
+  // 8. waiver
+  const it={MONDAY:1,TUESDAY:2,WEDNESDAY:3,THURSDAY:4,FRIDAY:5,SATURDAY:6,SUNDAY:0};
+  const wd=(R0.waiverDays||[]).map(d=>it[d]).filter(x=>x!=null);
+  if(wd.length){const td=new Date().getDay();let k=0;while(k<7&&!wd.includes((td+k)%7))k++;
+    const names=['domenica','lunedì','martedì','mercoledì','giovedì','venerdì','sabato'];
+    add('info',`Waiver: sei <b>${(ST[MY]||{}).waiver||'—'}°</b> nella priorità. Prossima elaborazione ${k===0?'oggi':names[(td+k)%7]}${R0.waiverHour!=null?' (ore '+R0.waiverHour+' orario ESPN)':''}.`,'Chi prende un giocatore dal waiver scende in fondo alla priorità; gli svincolati si prendono subito senza perderla.','waiver','Waiver');}
+  // 9. avversario
+  if(opp){const issues=setLineup(opp).filter(r=>r.starter).map(r=>({r,p:pOf(r.id)})).filter(x=>x.p&&(x.p.bye===W||OUT.includes(x.r.inj||x.p.inj)));
+    add('info',`Contro <b>${nmT(opp)}</b>: vittoria stimata <b>${cur.prob!=null?Math.round(cur.prob*100)+'%':'—'}</b> (${n1(cur.tot||0)} contro ${n1(cur.ot||0)} con le formazioni migliori).`,
+      issues.length?`Ha titolari che non giocano: ${issues.map(x=>esc(x.p.name)+(x.p.bye===W?' (bye)':' ('+(x.r.inj||x.p.inj)+')')).join(', ')}. Potrebbe correre al waiver.`:'Schiera una formazione completa.','matchup','Matchup');}
+  // 10. movimenti
+  const others=TX.filter(t=>t.team!==MY);
+  if(others.length)add('info',`${others.length} mosse degli avversari negli ultimi 7 giorni.`,others.slice(0,3).map(t=>`${nmT(t.team)}: + ${t.add.map(i=>{const p=pOf(i);return p?esc(p.name):'#'+i}).join(', ')}`).join(' · '),'teams','Le squadre');
+  if(!todo.some(t=>t.lvl==='bad'||t.lvl==='warn'))todo.unshift({lvl:'ok',txt:'<b>Tutto a posto</b> per questa giornata.',sub:'Formazione completa e migliore, nessun infortunio aperto.'});
+  const ordr={bad:0,warn:1,ok:2,info:3};todo.sort((a,b)=>ordr[a.lvl]-ordr[b.lvl]);
+  $('#wk-todo').innerHTML=todo.map(t=>`<li class="${t.lvl}"><i></i><div>${t.txt}${t.sub?`<small>${t.sub}</small>`:''}</div>${t.link&&t.link!=='week'?`<a href="#${t.link}" data-view="${t.link}">${t.ll} →</a>`:'<span></span>'}</li>`).join('');
+
+  /* strip in cima */
+  const AGE=window.DWR_AGE?window.DWR_AGE():{txt:'—',fresh:false};
+  const firstKick=Object.keys(TOP.games||{}).map(t=>kickOf(t,W)).filter(d=>d&&!isNaN(d)).sort((a,b)=>a-b)[0];
+  const nBad=todo.filter(t=>t.lvl==='bad').length,nWarn=todo.filter(t=>t.lvl==='warn').length;
+  const dl=R0.tradeDeadline?Math.ceil((R0.tradeDeadline-now)/864e5):null;
+  const rec=((TOP.lg||{}).rec||{})[MY]||{};
+  $('#wk-strip').innerHTML=`
+    <div class="sc" style="border-top-color:${nBad?'var(--offline)':nWarn?'var(--delayed)':'var(--live)'}"><h4>Da sistemare</h4>
+      <div class="kv"><span>urgenti</span><b style="color:${nBad?'var(--offline)':'inherit'}">${nBad}</b></div>
+      <div class="kv"><span>da controllare</span><b>${nWarn}</b></div>
+      <div class="verd">${nBad?'Ci sono punti sicuri da recuperare.':nWarn?'Niente di grave, ma da guardare.':'Settimana in ordine.'}</div></div>
+    <div class="sc"><h4>Sfida</h4>
+      <div class="kv"><span>contro</span><b>${opp?nmT(opp):'—'}</b></div>
+      <div class="kv"><span>vittoria stimata</span><b>${cur.prob!=null?Math.round(cur.prob*100)+'%':'—'}</b></div>
+      <div class="verd">Sei ${(ST[MY]||{}).seed||'—'}° (${rec.w??0}-${rec.l??0}).</div></div>
+    <div class="sc"><h4>Calendario</h4>
+      <div class="kv"><span>prima partita</span><b>${fmtKick(firstKick)}</b></div>
+      <div class="kv"><span>scadenza scambi</span><b>${dl==null?'—':dl>0?dl+' giorni':'chiusi'}</b></div>
+      <div class="verd">Stagione regolare fino alla ${R0.regWeeks||15}ª, playoff ${(R0.poWeeks||[]).join('-')}.</div></div>
+    <div class="sc" style="border-top-color:${AGE.fresh?'var(--live)':'var(--delayed)'}"><h4>Dati</h4>
+      <div class="kv"><span>aggiornati</span><b>${esc(AGE.txt)}</b></div>
+      <div class="verd">${window.DWR_LIVE?'Si aggiorna da solo ogni 30 secondi.':'Copia statica: rigenera per i dati nuovi.'}</div></div>`;
+}
+
+/* ================= LEGA NFL ================= */
+const NS={sort:'epaPlay',dir:-1,fpos:'WR',rpos:'ALL',rdir:'up',iown:'ALL'};
+const mineByNfl=()=>{const c={};POOL.filter(p=>p.own===MY).forEach(p=>c[p.nfl]=(c[p.nfl]||0)+1);return c};
+function renderNfl(){
+  const N=TOP.nfl||{},T=N.teams||{},DIV=N.div||{},MC=mineByNfl();
+  const wl=s=>`<span class="wl">${(s||'').split('').map(c=>`<span class="${c}">${c==='W'?'V':c==='L'?'S':'P'}</span>`).join('')}</span>`;
+  $('#nl-div').innerHTML=Object.entries(DIV).map(([d,ts])=>`<div><h4>${esc(d)}</h4><table class="antable"><thead><tr><th>Squadra</th><th class="num">V-S</th><th class="num">PF</th><th class="num">PA</th><th>Ultime 5</th></tr></thead><tbody>`+
+    ts.map(t=>({t,s:T[t]||{}})).sort((a,b)=>(b.s.w+b.s.t/2)/Math.max(1,b.s.w+b.s.l+b.s.t)-(a.s.w+a.s.t/2)/Math.max(1,a.s.w+a.s.l+a.s.t)||(b.s.pf-b.s.pa)-(a.s.pf-a.s.pa))
+      .map(({t,s})=>`<tr><td><b>${t}</b>${MC[t]?`<span class="mineN" title="tuoi giocatori">${MC[t]}</span>`:''}</td><td class="num">${s.w??0}-${s.l??0}${s.t?'-'+s.t:''}</td><td class="num">${s.pf??'—'}</td><td class="num" style="color:var(--k-muted)">${s.pa??'—'}</td><td>${wl(s.last)}</td></tr>`).join('')+
+    '</tbody></table></div>').join('');
+
+  /* attacchi e difese */
+  const G=t=>{const s=T[t]||{};const g=(s.w||0)+(s.l||0)+(s.t||0)||1;return{...s,t,ppg:(s.pf||0)/g,papg:(s.pa||0)/g}};
+  const rowsO=Object.keys(T).map(G);
+  const COLS=[['ppg','Punti/g',1,v=>n1(v)],['papg','Subiti/g',-1,v=>n1(v)],['ypg','Yard/g',1,v=>n0(v)],['passYpg','Pass/g',1,v=>n0(v)],['rushYpg','Corsa/g',1,v=>n0(v)],
+    ['epaPlay','EPA/giocata',1,v=>v==null?'—':(v>0?'+':'')+v.toFixed(3)],['plays','Ritmo',1,v=>n1(v)],['passRate','% pass',0,v=>n0(v)+'%'],['tdpg','TD/g',1,v=>v.toFixed(2)],
+    ['to','Palle perse/g',-1,v=>v.toFixed(2)],['sacksTaken','Sack subiti/g',-1,v=>n1(v)],['defSack','Sack fatti/g',1,v=>n1(v)],['defTo','Recuperi/g',1,v=>v.toFixed(2)]];
+  const terc={};COLS.forEach(([k,,good])=>{if(!good)return;const v=rowsO.map(r=>r[k]).filter(x=>x!=null).sort((a,b)=>a-b);terc[k]=[v[Math.floor(v.length/3)],v[Math.floor(v.length*2/3)]]});
+  const cls=(k,good,v)=>{if(!good||v==null||!terc[k])return'';const[lo,hi]=terc[k];const top=good>0?v>=hi:v<=lo,bot=good>0?v<=lo:v>=hi;return top?'hi':bot?'lo':''};
+  rowsO.sort((a,b)=>NS.sort==='t'?a.t.localeCompare(b.t)*NS.dir:((a[NS.sort]??-1e9)-(b[NS.sort]??-1e9))*NS.dir);
+  $('#nl-off').innerHTML=`<thead><tr><th data-k="t" class="${NS.sort==='t'?'on':''}">Squadra</th><th>V-S</th>${COLS.map(([k,l])=>`<th class="num${NS.sort===k?' on':''}" data-k="${k}">${l}${NS.sort===k?(NS.dir<0?' ↓':' ↑'):''}</th>`).join('')}</tr></thead><tbody>`+
+    rowsO.map(r=>`<tr class="${MC[r.t]?'mine':''}"><td><b>${r.t}</b>${MC[r.t]?`<span class="mineN">${MC[r.t]}</span>`:''}</td><td style="color:var(--k-muted)">${r.w??0}-${r.l??0}</td>${COLS.map(([k,,good,f])=>`<td class="num ${cls(k,good,r[k])}">${r[k]==null?'—':f(r[k])}</td>`).join('')}</tr>`).join('')+'</tbody>';
+  $('#nl-off').querySelector('thead').onclick=e=>{const th=e.target.closest('th[data-k]');if(!th)return;const k=th.dataset.k;
+    if(NS.sort===k)NS.dir=-NS.dir;else{NS.sort=k;NS.dir=k==='t'||k==='papg'||k==='to'||k==='sacksTaken'?1:-1}renderNfl()};
+
+  /* punti fantasy concessi */
+  chips($('#nl-fpos'),['QB','RB','WR','TE'],NS.fpos,c=>{NS.fpos=c;renderNfl()});
+  const F26=TOP.fpa26||{},REC=N.fpaRecent||{},RL=N.fpaRecentLeague||{},pos=NS.fpos;
+  const sched=window.DWR_SCHED||{};
+  const W=TOP.week||WEEK;
+  const fr=Object.keys(F26).map(t=>{const f=(F26[t]||{})[pos]||{},rv=(REC[t]||{})[pos];return{t,v:f.v,ratio:f.ratio,r:f.r,rec:rv!=null&&RL[pos]?rv/RL[pos]:null,rv}})
+    .filter(x=>x.ratio!=null).sort((a,b)=>b.ratio-a.ratio);
+  const col=v=>v==null?'':v>=1.12?'color:var(--live);font-weight:700':v>=1.04?'color:var(--live)':v<=0.88?'color:var(--offline);font-weight:700':v<=0.96?'color:var(--offline)':'';
+  const nextOpp=t=>{const out=[];Object.entries(sched).forEach(([tm,s])=>{const o=(s.opp||{})[W]||(s.opp||{})[String(W)];if(o&&o.replace('@','')===t)out.push(tm)});return out};
+  $('#nl-fpa').innerHTML=`<thead><tr><th>Difesa</th><th class="num">${pos} concessi/g</th><th class="num">Stagione</th><th class="num">Ultime 4</th><th>Tendenza</th><th>Affronta in s${W}</th></tr></thead><tbody>`+
+    fr.map(x=>{const d=x.rec!=null?x.rec-x.ratio:null;
+      return`<tr><td><b>${x.t}</b></td><td class="num">${n1(x.v)}</td><td class="num" style="${col(x.ratio)}">${x.ratio.toFixed(2)}</td><td class="num" style="${col(x.rec)}">${x.rec!=null?x.rec.toFixed(2):'—'}</td>
+        <td>${d==null?'—':d>=0.08?'<span style="color:var(--live)">▲ concede di più</span>':d<=-0.08?'<span style="color:var(--offline)">▼ si è chiusa</span>':'<span style="color:var(--k-muted)">stabile</span>'}</td>
+        <td style="color:var(--k-muted)">${nextOpp(x.t).join(', ')||'—'}</td></tr>`}).join('')+'</tbody>';
+
+  /* chi sale e chi scende */
+  chips($('#nl-rpos'),['ALL','RB','WR','TE'],NS.rpos,c=>{NS.rpos=c;renderNfl()});
+  $('#nl-rdir').innerHTML=[['up','Sale'],['down','Scende']].map(([k,l])=>`<button data-c="${k}" class="${NS.rdir===k?'on':''}">${l}</button>`).join('');
+  $('#nl-rdir').onclick=e=>{const b=e.target.closest('button');if(b){NS.rdir=b.dataset.c;renderNfl()}};
+  const WKY=TOP.weekly||{};
+  const avg=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null;
+  const rad=POOL.filter(p=>['RB','WR','TE'].includes(p.pos)&&(NS.rpos==='ALL'||p.pos===NS.rpos)).map(p=>{
+    const g=(WKY[String(p.id)]||[]).filter(r=>r[13]!=null||r[3]!=null||r[7]!=null);
+    if(g.length<5)return null;
+    const l3=g.slice(-3),pr=g.slice(0,-3);
+    const opp=r=>(r[3]||0)+(r[7]||0),snap=r=>r[13];
+    const sL=avg(l3.map(snap).filter(v=>v!=null)),sP=avg(pr.map(snap).filter(v=>v!=null));
+    const oL=avg(l3.map(opp)),oP=avg(pr.map(opp));
+    const pL=avg(l3.map(r=>r[1]||0)),pP=avg(pr.map(r=>r[1]||0));
+    if(sL==null||sP==null)return null;
+    return{p,sL,sP,oL,oP,pL,pP,ds:sL-sP,dop:oL-oP,score:(sL-sP)/10+(oL-oP)/3}}).filter(Boolean)
+    .filter(x=>NS.rdir==='up'?x.score>0.5:x.score<-0.5).sort((a,b)=>NS.rdir==='up'?b.score-a.score:a.score-b.score).slice(0,40);
+  const sg=(v,d=0)=>`<span style="color:${v>0?'var(--live)':v<0?'var(--offline)':'var(--k-muted)'}">${v>0?'+':''}${d?v.toFixed(d):n0(v)}</span>`;
+  $('#nl-radar').innerHTML=`<thead><tr><th>Giocatore</th><th>Di chi</th><th class="num">Snap ult. 3</th><th class="num">Δ snap</th><th class="num">Opp. ult. 3</th><th class="num">Δ opp.</th><th class="num">Punti ult. 3</th></tr></thead><tbody>`+
+    (rad.length?rad.map(x=>`<tr class="${x.p.own===MY?'mine':''}"><td>${posTag(x.p.pos)} <span data-pid="${x.p.id}">${esc(x.p.name)}</span> <small style="color:var(--k-muted)">${x.p.nfl}</small></td><td>${ownTag(x.p)}</td>
+      <td class="num">${n0(x.sL)}%</td><td class="num">${sg(x.ds)}</td><td class="num">${n1(x.oL)}</td><td class="num">${sg(x.dop,1)}</td><td class="num">${n1(x.pL)} <small style="color:var(--k-muted)">(${n1(x.pP)})</small></td></tr>`).join('')
+      :'<tr><td colspan="7" style="color:var(--k-muted)">Nessun cambio di ruolo rilevante.</td></tr>')+'</tbody>';
+
+  /* infortuni */
+  chips($('#nl-iown'),['ALL','MINE','LEAGUE','FREE'],NS.iown,c=>{NS.iown=c;renderNfl()});
+  $('#nl-iown').querySelectorAll('button').forEach(b=>b.textContent={ALL:'Tutti',MINE:'I tuoi',LEAGUE:'Avversari',FREE:'Liberi'}[b.dataset.c]);
+  const INJ=TOP.inj||{},MAP=TOP.map||{};
+  const ij=POOL.map(p=>({p,i:INJ[MAP[p.id]]})).filter(x=>x.i&&(x.i.s||/Limited|Did Not/i.test(x.i.pr||''))&&x.i.w>=W-1&&(x.p.own||x.p.proj>=40))
+    .filter(x=>NS.iown==='ALL'||(NS.iown==='MINE'?x.p.own===MY:NS.iown==='LEAGUE'?x.p.own&&x.p.own!==MY:!x.p.own))
+    .sort((a,b)=>((a.p.own===MY?0:a.p.own?1:2)-(b.p.own===MY?0:b.p.own?1:2))||(b.p.proj-a.p.proj));
+  const prIt=pr=>!pr?'—':/Did Not/i.test(pr)?'<span style="color:var(--offline)">assente</span>':/Limited/i.test(pr)?'<span style="color:var(--delayed)">ridotto</span>':/Full/i.test(pr)?'<span style="color:var(--live)">pieno</span>':esc(pr);
+  $('#nl-inj').innerHTML=`<thead><tr><th>Giocatore</th><th>Di chi</th><th>Stato</th><th>Infortunio</th><th>Allenamento</th></tr></thead><tbody>`+
+    (ij.length?ij.map(({p,i})=>`<tr class="${p.own===MY?'mine':''}"><td>${posTag(p.pos)} <span data-pid="${p.id}">${esc(p.name)}</span> <small style="color:var(--k-muted)">${p.nfl} · s${i.w}</small></td><td>${ownTag(p)}</td>
+      <td><span class="tag2 ${['O','IR','D'].includes(i.s)?'bad':i.s?'warn':''}">${esc(i.s||'—')}</span></td><td>${esc(i.i||'—')}</td><td>${prIt(i.pr)}</td></tr>`).join('')
+      :'<tr><td colspan="5" style="color:var(--k-muted)">Nessun giocatore nel bollettino.</td></tr>')+'</tbody>';
+
+  /* bye che restano */
+  const R0=TOP.rules||{},LAST=Math.max(R0.regWeeks||15,...(R0.poWeeks||[17]));
+  const byW={};Object.entries(sched).forEach(([t,s])=>{if(s.bye&&s.bye>=W&&s.bye<=LAST)(byW[s.bye]=byW[s.bye]||[]).push(t)});
+  $('#nl-bye').innerHTML=`<thead><tr><th>Sett.</th><th>A riposo</th>${[1,2,3,4].map(t=>`<th class="num">${ab(t)}</th>`).join('')}</tr></thead><tbody>`+
+    (Object.keys(byW).length?Object.keys(byW).sort((a,b)=>a-b).map(w=>{const ts=byW[w];
+      return`<tr><td><b>${w}</b>${(R0.poWeeks||[]).includes(+w)?' <span class="tag2 acc">playoff</span>':''}</td><td>${ts.join(', ')}</td>${[1,2,3,4].map(t=>{const n=POOL.filter(p=>p.own===t&&ts.includes(p.nfl)).length;
+        return`<td class="num" style="${t===MY?'font-weight:700;':''}color:${n>=3?'var(--offline)':n>=2?'var(--delayed)':'var(--k-muted)'}">${n||'—'}</td>`}).join('')}</tr>`}).join('')
+      :'<tr><td colspan="6" style="color:var(--k-muted)">Nessun bye nelle giornate rimaste.</td></tr>')+'</tbody>';
+}
+
+R.week=renderWeek;R.nflleague=renderNfl;
+const cur=(location.hash||'').slice(1);
+if(cur==='week'||cur==='nflleague')window.DWR_VIEW(cur);
+})();
+</script>

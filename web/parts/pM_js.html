@@ -21,15 +21,18 @@
 .rv-dl h5 i{width:9px;height:9px;border-radius:2px;display:inline-block}
 .rv-dl div.r{display:flex;justify-content:space-between;gap:8px;padding:2px 0;border-bottom:1px solid #18202A;cursor:pointer}
 .rv-dl div.r:hover{color:var(--k-y)}
-.mm-t td{vertical-align:middle}
+.mm-t td{vertical-align:middle;white-space:nowrap}
+.mm-t .tag2{margin-right:3px}
 .mm-t th[data-k]{cursor:pointer}
 .mm-t th[data-k].on{color:var(--k-y)}
 .mm-tag{display:inline-block;font:600 10px/1.6 var(--mono);padding:0 6px;border:1px solid var(--k-line);border-radius:999px;color:var(--k-ink);margin:1px 3px 1px 0;white-space:nowrap}
 .mm-tag.neg{color:var(--k-muted);border-style:dashed}
-.console .mm-star{background:none;border:0;cursor:pointer;font-size:16px;color:#3A4654;padding:0 4px}
+.console .mm-star{background:none;border:0;cursor:pointer;font-size:13px;line-height:1;color:#3A4654;padding:0 6px 0 0;vertical-align:middle}
 .console .mm-star.on{color:var(--k-y)}
 .console .mm-star:disabled{cursor:default;opacity:.5}
-.mm-note{width:100%;min-width:140px;background:var(--k-p2);border:1px solid var(--k-line);border-radius:6px;color:var(--k-ink);font:12px var(--sans);padding:3px 6px}
+.mm-note{width:100%;min-width:96px;background:transparent;border:1px solid transparent;border-radius:5px;color:var(--k-ink);font:12px var(--sans);padding:2px 6px}
+.mm-note:hover,.mm-note:focus{background:var(--k-p2);border-color:var(--k-line);outline:0}
+.mm-note::placeholder{color:#4A5866}
 .mm-legend{margin-top:10px;font-size:12px;color:var(--k-muted)}
 .mm-legend summary{cursor:pointer;color:var(--k-ink)}
 .mm-legend dl{display:grid;grid-template-columns:max-content 1fr;gap:4px 12px;margin:8px 0 0}
@@ -87,7 +90,7 @@ function renderReview(){
   $('#rv-opp-name').textContent=ST.opp==='avg'?'media delle altre':TBY.get(ST.opp).name;
   $('#rv-info').textContent=`giornate ${rv.weeks[0]}–${rv.weeks[rv.weeks.length-1]} · ${rv.starts.length} titolari analizzati`;
   tabs();kpis();luckView();lineChart();formTable();stripChart();divChart();matrix();starsChart();tdChart();
-  choicesTable();marketView();draftChart();draftTeam();simChart();sosTable();byesTable();verdict();
+  choicesTable();marketView();draftChart();draftTeam();simChart();leftGames();sosTable();byesTable();verdict();
 }
 
 function kpis(){
@@ -264,6 +267,28 @@ function marketView(){
 }
 
 /* ---------- 5. seed e titolo: barre impilate per seed, scala neutra ---------- */
+/* le sfide che restano: formazioni migliori di entrambe, giornata per giornata */
+function leftGames(){
+  const el=$('#rv-left');if(!el||!window.DWR3||!window.DWR3.outlook)return;
+  const M3=window.DWR3,TOPX=window.TOPINA,LGX=TOPX.lg||{},ST=TOPX.standings||{},REC=LGX.rec||{},R0=TOPX.rules||{};
+  const WK=M3.WEEK,REGW=R0.regWeeks||15;
+  const OL={};[1,2,3,4].forEach(t=>{OL[t]={};M3.outlook(t).forEach(r=>OL[t][r.w]=r)});
+  const games=(LGX.games||[]).filter(g=>g.w>=WK&&g.w<=REGW);
+  const seeds=[1,2,3,4].sort((a,b)=>((ST[a]||{}).seed||9)-((ST[b]||{}).seed||9));
+  const nm=t=>`<b style="${t===MY?'color:var(--k-me)':''}">${esc(TBY.get(t).name)}</b>`;
+  const cell=g=>{const a=OL[g.h][g.w],b=OL[g.a][g.w];if(!a||!b)return'—';const p=a.prob;
+    const fav=p>=0.5?g.h:g.a,pp=p>=0.5?p:1-p;
+    return`${nm(g.h)} ${n0(a.tot)} – ${n0(b.tot)} ${nm(g.a)} <span style="color:var(--k-muted);font-size:11.5px">· favorito ${esc(TBY.get(fav).abbr)} ${Math.round(pp*100)}%</span>`};
+  const byW={};games.forEach(g=>(byW[g.w]=byW[g.w]||[]).push(g));
+  el.innerHTML=`<thead><tr><th>Sett.</th><th>Sfida 1</th><th>Sfida 2</th></tr></thead><tbody>`+
+    Object.keys(byW).sort((a,b)=>a-b).map(w=>{const gs=byW[w].sort((a,b)=>(b.h===MY||b.a===MY)-(a.h===MY||a.a===MY));
+      return`<tr><td><b>${w}</b></td>${gs.map(g=>`<td style="white-space:nowrap">${cell(g)}</td>`).join('')}</tr>`}).join('')+'</tbody>';
+  const me=REC[MY]||{},s1=REC[seeds[0]]||{},s4=REC[seeds[3]]||{};
+  const mySeed=(ST[MY]||{}).seed;
+  $('#rv-left-note').innerHTML=`<b>Se finisse oggi:</b> semifinali ${nm(seeds[0])} contro ${nm(seeds[3])} e ${nm(seeds[1])} contro ${nm(seeds[2])}. `+
+    `Sei ${mySeed}° (${me.w}-${me.l})${mySeed>1?`, a ${(s1.w-me.w)} vittori${s1.w-me.w===1?"a":"e"} dal primo posto (${esc(TBY.get(seeds[0]).name)} ${s1.w}-${s1.l})`:''}. `+
+    `Il seed si decide sul record negli scontri diretti, poi sui punti: ogni sfida contro chi ti sta vicino in classifica vale doppio. I punti sono le formazioni migliori proiettate.`;
+}
 function simChart(){
   const O=RV().outlook||{},S=O.sim||{},ts=TEAMS().slice().sort((a,b)=>S[b].title-S[a].title),C=COL();
   if(!O.sim){$('#rv-sim').innerHTML='<p class="cn">Simulazione non disponibile.</p>';return}
@@ -542,19 +567,20 @@ function renderMemo(){
   const live=!!window.DWR_SERVER;
   const th=(k,l,num)=>`<th data-k="${k}" class="${MS.sort===k?'on':''}${num?' num':''}">${l}${MS.sort===k?(MS.dir<0?' ▼':' ▲'):''}</th>`;
   const tname=t=>t?esc(TBY.get(t).abbr):'—';
-  $('#mm-table').innerHTML=`<thead><tr><th></th><th>Giocatore</th><th>Squadra fantasy</th>${th('games','Partite',1)}${th('avg','Media a partita',1)}${th('above','Sopra il ruolo',1)}${th('booms','Boom',1)}${th('pts','Punti da titolare',1)}${th('bench','Punti in panchina',1)}<th>Come è arrivato</th><th>Etichette</th><th>Nota</th></tr></thead><tbody>`+
+  const dcol=v=>v==null?'—':`<span style="color:${v>0.4?'var(--live)':v<-0.4?'var(--offline)':'var(--k-muted)'}">${sgn(v)}</span>`;
+  $('#mm-table').innerHTML=`<thead><tr><th>Giocatore</th><th>Squadra · arrivo</th>${th('games','Partite',1)}${th('avg','Media',1)}${th('above','Sopra ruolo',1)}${th('booms','Boom',1)}${th('pts','Titolare',1)}${th('bench','Panchina',1)}<th>Etichette</th><th>Nota</th></tr></thead><tbody>`+
     rows.map(p=>{
       const n=N[p.id]||{};
-      const how=p.free?'mai preso':p.acq?`${p.acq.type==='WAIVER'?'waiver':'svincolato'} s${p.acq.week} · ${tname(p.acq.team)}`:p.pick?`pick ${p.pick} · ${tname(p.pickTeam)} <span style="color:var(--k-muted)">(${sgn(p.res)})</span>`:'—';
-      return`<tr><td><button class="mm-star${n.star?' on':''}" data-star="${p.id}" title="${live?'segna per l\'anno prossimo':'si può segnare solo nel sito locale'}" ${live?'':'disabled'}>★</button></td>
-        <td data-pid="${p.id}" style="cursor:pointer"><span class="pos pos-${p.pos}" style="display:inline-block;min-width:30px;text-align:center;font:700 9.5px/1.6 var(--mono);border-radius:3px;color:#0B0F14;background:${POSC[p.pos]||'#9AA8BA'}">${PLAB[p.pos]||p.pos}</span> <b>${esc(p.name)}</b> <small style="color:var(--k-muted)">${p.nfl||''}</small></td>
-        <td>${p.free?'<span style="color:var(--k-muted)">nessuna</span>':(p.teams||[]).map(t=>`<span${t===MY?' style="color:var(--k-ink);font-weight:700"':''}>${tname(t)}</span>`).join(' → ')}</td>
-        <td class="num" title="${p.free?'partite giocate':`${p.games} giocate, ${p.starts} da titolare, ${p.weeks} giornate in rosa`}">${p.games}${p.free?'':` <small style="color:var(--k-muted)">${p.starts} tit.</small>`}</td>
+      const how=p.free?'':p.acq?`${p.acq.type==='WAIVER'?'waiver':'svincolato'} s${p.acq.week}`:p.pick?`pick ${p.pick} <span style="color:${p.res>0?'var(--live)':p.res<0?'var(--offline)':'var(--k-muted)'}">${sgn(p.res)}</span>`:'—';
+      const fan=p.free?'<span class="tag2 acc">libero</span>':(p.teams||[]).map(t=>`<span class="tag2"${t===MY?' style="color:var(--k-me)"':''}>${tname(t)}</span>`).join('<span style="color:var(--k-muted)">→ </span>');
+      const tags=(p.tags||[]).map(t=>`<span class="tag2 ${t==='delusione'?'bad':'good'}" title="${esc(TAGS[t][1])}">${TAGS[t][0]}</span>`).join('');
+      return`<tr class="${(p.teams||[]).includes(MY)?'mine':''}"><td><button class="mm-star${n.star?' on':''}" data-star="${p.id}" title="${live?'segna per l\'anno prossimo':'si può segnare solo nel sito locale'}" ${live?'':'disabled'}>★</button><span class="pos pos-${p.pos}">${p.pos}</span> <b data-pid="${p.id}">${esc(p.name)}</b> <span style="color:var(--k-muted)">${p.nfl||''}</span></td>
+        <td>${fan}${how?` <span style="color:var(--k-muted)">${how}</span>`:''}</td>
+        <td class="num" title="${p.free?'partite giocate':`${p.games} giocate, ${p.starts} da titolare, ${p.weeks} giornate in rosa`}">${p.games}${p.free?'':` <span style="color:var(--k-muted)">(${p.starts})</span>`}</td>
         <td class="num"><b>${n1(p.avg)}</b></td>
-        <td class="num">${p.above==null?'—':sgn(p.above)}</td><td class="num">${p.booms||0}</td>
+        <td class="num">${dcol(p.above)}</td><td class="num">${p.booms||0}</td>
         <td class="num">${p.free?'—':n1(p.pts)}</td><td class="num">${p.bench?n1(p.bench):'—'}</td>
-        <td style="white-space:nowrap">${how}</td>
-        <td>${(p.tags||[]).map(t=>`<span class="mm-tag${t==='delusione'?' neg':''}" title="${esc(TAGS[t][1])}">${TAGS[t][0]}</span>`).join('')}</td>
+        <td>${tags||'—'}</td>
         <td><input class="mm-note" data-note="${p.id}" value="${esc(n.note||'')}" placeholder="${live?'appunto per il draft':'solo nel sito locale'}" ${live?'':'disabled'}></td></tr>`}).join('')+'</tbody>';
   $('#mm-defs').innerHTML=Object.values(TAGS).map(([l,d])=>`<dt><span class="mm-tag">${l}</span></dt><dd style="margin:0">${d}</dd>`).join('');
   memoHistory();
@@ -586,8 +612,8 @@ function memoHistory(){
     [...(s.players||[]),...(s.free||[]).map(f=>({...f,free:true}))].forEach(p=>{
       const n=N[p.id]||{};if((p.tags||[]).length||n.star||n.note)rows.push({y,p,n})})});
   $('#mm-hist').innerHTML=`<thead><tr><th>Stagione</th><th>Giocatore</th><th class="num">Media</th><th>Etichette</th><th>Nota</th></tr></thead><tbody>`+
-    rows.map(({y,p,n})=>`<tr><td>${y}</td><td data-pid="${p.id}" style="cursor:pointer">${n.star?'<span style="color:var(--k-y)">★</span> ':''}<b>${esc(p.name)}</b> <small style="color:var(--k-muted)">${p.pos} · ${p.nfl||''}</small></td>
-      <td class="num">${n1(p.avg)}</td><td>${(p.tags||[]).map(t=>TAGS[t]?`<span class="mm-tag">${TAGS[t][0]}</span>`:'').join('')}</td><td>${esc(n.note||'')}</td></tr>`).join('')+'</tbody>';
+    rows.map(({y,p,n})=>`<tr><td>${y}</td><td>${n.star?'<span style="color:var(--k-y)">★</span> ':''}<span class="pos pos-${p.pos}">${p.pos}</span> <b data-pid="${p.id}">${esc(p.name)}</b> <span style="color:var(--k-muted)">${p.nfl||''}</span></td>
+      <td class="num"><b>${n1(p.avg)}</b></td><td>${(p.tags||[]).map(t=>TAGS[t]?`<span class="tag2 ${t==='delusione'?'bad':'good'}" style="margin-right:3px">${TAGS[t][0]}</span>`:'').join('')||'—'}</td><td style="color:var(--k-muted)">${esc(n.note||'')||'—'}</td></tr>`).join('')+'</tbody>';
 }
 
 /* nella draft room: un segnale accanto ai giocatori ricordati dalle stagioni passate */

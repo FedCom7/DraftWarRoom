@@ -15,7 +15,8 @@
       <p class="cn">I duelli con lo scarto più largo e i giocatori che possono ribaltare il risultato da soli.</p>
       <div id="mu-keys"></div>
       <h3 style="margin-top:14px">Il resto del calendario</h3>
-      <div style="overflow:auto;max-height:260px"><table class="antable" id="mu-sched"></table></div>
+      <p class="cn">Le tue formazioni migliori contro quelle degli avversari, giornata per giornata, con la probabilità di vittoria.</p>
+      <div class="tscroll"><table class="antable" id="mu-sched"></table></div>
     </div>
   </div>
 </div>
@@ -23,11 +24,13 @@
 
 <div id="view-trades" class="view" hidden>
 <div class="console">
-  <div class="an-head"><h2>Scambi possibili</h2><p>Per ogni avversario: dove ha troppo e dove gli manca. Poi tutti gli scambi uno-a-uno che migliorano la formazione titolare di <em>entrambi</em> — perché in una lega da quattro uno scambio unilaterale non lo accetta nessuno.</p></div>
+  <div class="an-head"><h2>Scambi possibili</h2><p>Per ogni avversario: dove ha troppo e dove gli manca. Poi gli scambi uno per uno, due per uno e due per due che migliorano la formazione titolare di <em>entrambi</em> da qui alla fine, playoff compresi — perché in una lega da quattro uno scambio unilaterale non lo accetta nessuno.</p></div>
   <div class="an-bar">
     <label>Avversario <select id="tr-team"></select></label>
     <label>Guadagno minimo <select id="tr-min"><option value="0.5">mezzo punto a gara</option><option value="1" selected>1 pt a gara</option><option value="2">2 pt a gara</option><option value="4">4 pt a gara</option></select></label>
-    <span class="sp">Il guadagno è la differenza sulla formazione titolare proiettata, per giornata</span>
+    <span class="sp">Il guadagno è la differenza sulla formazione titolare di ogni giornata rimasta (playoff pesati 1,5), in punti a giornata</span>
+  </div>
+  <div class="an-bar" style="margin-top:-4px"><span id="tr-deadline"></span>
   </div>
   <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1.25fr)">
     <div class="chartcard">
@@ -38,7 +41,7 @@
     <div class="chartcard">
       <h3>Proposte che convengono a tutti e due</h3>
       <p class="cn">Ordinate per guadagno più piccolo fra i due, cioè per quanto è probabile che l'altro accetti.</p>
-      <div style="overflow-x:auto;max-height:520px"><table class="antable" id="tr-list"></table></div>
+      <div class="tscroll" id="tr-list"></div>
     </div>
   </div>
 </div>
@@ -46,13 +49,13 @@
 
 <div id="view-history" class="view" hidden>
 <div class="console">
-  <div class="an-head"><h2>Storico della lega</h2><p>Otto stagioni dall'archivio storico della lega: classifiche di regular season, punti, scontri diretti e record. La stagione in corso arriva invece da ESPN in tempo reale.</p></div>
+  <div class="an-head"><h2>Storico della lega</h2><p>Le stagioni chiuse dall'archivio storico della lega (classifiche di regular season, punti, playoff, titoli) più quella in corso, letta da ESPN giornata per giornata: entra nella tabella e negli scontri diretti appena una giornata si chiude.</p></div>
   <div class="strip" id="hi-strip"></div>
   <div class="an-grid" style="grid-template-columns:minmax(0,1.2fr) minmax(0,1fr)">
     <div class="chartcard">
       <h3>Stagione per stagione</h3>
-      <p class="cn">Record di regular season, punti fatti e subiti, miglior settimana e bilancio nei playoff. La riga con il <b>1°</b> è il miglior record della stagione regolare, che non sempre coincide con chi ha poi vinto il titolo.</p>
-      <div style="overflow:auto;max-height:560px"><table class="antable" id="hi-table"></table></div>
+      <p class="cn">Record di regular season, punti fatti e subiti, miglior settimana e bilancio nei playoff. La riga con il <b>1°</b> è il miglior record della stagione regolare; la coppa 🏆 è chi ha vinto davvero il titolo, e spesso non coincidono.</p>
+      <div class="tscroll"><table class="antable" id="hi-table" data-clip="16"></table></div>
     </div>
     <div class="chartcard">
       <h3>Punti fatti contro vittorie</h3>

@@ -123,6 +123,11 @@
       <p class="cn" id="rv-simnote"></p>
       <div class="chartwrap" id="rv-sim"></div>
     </div>
+    <div class="chartcard" style="margin-bottom:10px">
+      <h3>Le sfide che restano</h3>
+      <p class="cn" id="rv-left-note"></p>
+      <div class="tscroll"><table class="antable" id="rv-left"></table></div>
+    </div>
     <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
       <div class="chartcard">
         <h3>Calendario che resta</h3>
@@ -152,14 +157,14 @@
     <span class="sp" id="mm-info"></span>
   </div>
   <div class="chartcard">
-    <div style="overflow:auto;max-height:70vh"><table class="antable mm-t" id="mm-table"></table></div>
+    <div class="tscroll"><table class="antable mm-t" id="mm-table" data-clip="25"></table></div>
     <details class="mm-legend"><summary>Cosa vogliono dire le etichette</summary>
       <dl id="mm-defs"></dl></details>
   </div>
   <div class="chartcard" id="mm-hist-card" style="margin-top:10px" hidden>
     <h3>Dalle stagioni passate</h3>
     <p class="cn">I giocatori segnati nelle stagioni archiviate: sono gli stessi che la draft room evidenzia.</p>
-    <div style="overflow:auto;max-height:50vh"><table class="antable" id="mm-hist"></table></div>
+    <div class="tscroll"><table class="antable" id="mm-hist" data-clip="15"></table></div>
   </div>
 </div>
 </div>

@@ -33,24 +33,24 @@
 
 <div id="view-schedule" class="view" hidden>
 <div class="console">
-  <div class="an-head"><h2>Calendario, bye e difficoltà</h2><p>Bye week e avversari arrivano dal calendario ESPN 2026; la durezza di una difesa è la media dei punti PPR che ha concesso a quel reparto nel 2025 (nflverse), rapportata alla media della lega. 1.00 è una difesa nella media: sopra concede di più, sotto è dura.</p></div>
+  <div class="an-head"><h2>Calendario, bye e difficoltà</h2><p>Bye week e avversari arrivano dal calendario ESPN 2026; la durezza di una difesa è la media dei punti PPR che ha concesso a quel reparto (nflverse), rapportata alla media della lega: il 2026 pesa sempre di più man mano che passano le giornate, il 2025 resta come base. 1.00 è una difesa nella media: sopra concede di più, sotto è dura.</p></div>
   <div class="an-bar">
     <label>Reparto <select id="sd-pos"><option>RB</option><option selected>WR</option><option>QB</option><option>TE</option></select></label>
-    <label>Finestra <select id="sd-win"><option value="all">Stagione intera (1-17)</option><option value="po" selected>Playoff di lega (15-17)</option><option value="early">Inizio stagione (1-6)</option></select></label>
-    <span class="sp">Il tuo campionato assegna i playoff nelle settimane 15-17</span>
+    <label>Finestra <select id="sd-win"><option value="rest">Da qui alla fine</option><option value="po" selected>Playoff di lega</option><option value="all">Stagione intera (1-17)</option></select></label>
+    <span class="sp" id="sd-note"></span>
   </div>
   <div class="an-grid">
     <div class="chartcard">
       <h3>Difficoltà del calendario per squadra NFL</h3>
       <p class="cn">Media della durezza degli avversari nella finestra scelta. Verde: calendario morbido per quel reparto.</p>
-      <div style="overflow:auto;max-height:560px"><table class="antable" id="sd-table"></table></div>
+      <div class="tscroll"><table class="antable" id="sd-table" data-clip="12"></table></div>
     </div>
     <div class="chartcard">
       <h3>Mappa dei bye</h3>
       <p class="cn">Quante squadre NFL riposano in ogni settimana, e i giocatori più forti coinvolti. Con 9 titolari e 6 panchinari, due bye sovrapposti nello stesso reparto sono un problema reale.</p>
       <div id="sd-bye"></div>
       <h3 style="margin-top:14px">I migliori giocatori con il calendario playoff più facile</h3>
-      <div style="overflow:auto;max-height:300px"><table class="antable" id="sd-players"></table></div>
+      <div class="tscroll"><table class="antable" id="sd-players" data-clip="10"></table></div>
     </div>
   </div>
 </div>
@@ -58,19 +58,21 @@
 
 <div id="view-waiver" class="view" hidden>
 <div class="console wv">
-  <div class="an-head"><h2>Waiver · chi prendere e chi tagliare</h2><p>Tutti i giocatori liberi della lega messi contro la tua rosa. Ogni sostituzione è provata davvero: si toglie un tuo giocatore, si mette il libero e si ricalcola la formazione migliore giornata per giornata. Il guadagno è quello che cambia nei <b>titolari</b>, in punti a giornata. Il valore atteso di una giornata mescola la proiezione ESPN di quella settimana (65%) con la media delle ultime cinque partite giocate (35%): una proiezione a zero vuol dire fuori o in bye.</p></div>
+  <div class="an-head"><h2>Waiver · chi prendere e chi tagliare</h2><p>Tutti i giocatori liberi della lega messi contro la tua rosa. Ogni sostituzione è provata davvero: si toglie un tuo giocatore, si mette il libero e si ricalcola la formazione migliore giornata per giornata. Il guadagno è quello che cambia nei <b>titolari</b>, in punti a giornata. Il valore atteso di una giornata mescola la proiezione ESPN di quella settimana (65%) con la media delle ultime cinque partite giocate (35%): una proiezione a zero vuol dire fuori o in bye. Con <b>Confronta su → Partite giocate</b> la stessa simulazione si rifà sulle giornate passate della finestra "Forma", con i punti veri: una partita saltata vale la media di stagione del giocatore, così conta il rendimento e non le assenze.</p></div>
   <div class="an-bar">
     <div class="chips" id="wv-pos"></div>
     <label>Forma su <select id="wv-win"><option value="3">ultime 3 giornate</option><option value="5" selected>ultime 5 giornate</option><option value="99">tutta la stagione</option></select></label>
+    <span style="display:flex;gap:5px;align-items:center;font-size:12px;color:var(--k-muted)">Confronta su <span class="chips" id="wv-basis"></span></span>
     <label>Orizzonte <select id="wv-hor"><option value="1">prossima giornata</option><option value="2">prossime 2</option><option value="4" selected>prossime 4</option></select></label>
     <span class="sp" id="wv-info"></span>
   </div>
+  <div class="an-bar" id="wv-rules" style="margin-top:-4px"></div>
   <div class="strip" id="wv-strip"></div>
 
   <div class="an-grid" style="grid-template-columns:minmax(0,1.25fr) minmax(0,1fr)">
     <div class="chartcard">
       <h3>Le mosse che rafforzano la formazione</h3>
-      <p class="cn">Per ogni libero il taglio che rende di più, dando per fatte le mosse del piano negli altri reparti (chi non vale nulla si taglia una volta sola). A parità di guadagno si taglia chi vale meno nel resto della stagione. La barra è il guadagno dei titolari in punti a giornata sull'orizzonte scelto. Tocca una riga per aprire il testa a testa qui sotto.</p>
+      <p class="cn" id="wv-moves-cn"></p>
       <div class="chartwrap" id="wv-moves"></div>
       <h3 style="margin-top:14px">Il piano, una mossa dopo l'altra</h3>
       <p class="cn">Le mosse applicate in sequenza: dopo ognuna la rosa cambia e la successiva tiene conto della precedente.</p>
@@ -78,7 +80,7 @@
     </div>
     <div class="chartcard">
       <h3>Dove i liberi battono i tuoi titolari</h3>
-      <p class="cn">Valore atteso a giornata sull'orizzonte. Blu: i tuoi giocatori del reparto, pieni se titolari e vuoti se in panchina. Giallo: i tre liberi migliori. Un giallo a destra del blu più debole pieno è un titolare da cambiare. Tocca un reparto per analizzarlo.</p>
+      <p class="cn" id="wv-gap-cn"></p>
       <div class="chartwrap" id="wv-gap"></div>
       <div class="legend2" id="wv-gap-lg"></div>
     </div>
@@ -138,8 +140,9 @@
       <label><input type="checkbox" id="wv-showmine" checked> mostra i miei</label>
       <label><input type="checkbox" id="wv-showown"> mostra chi è in altre rose</label>
       <label><input type="search" id="wv-q" placeholder="Cerca un nome"></label>
+      <span style="display:flex;gap:5px;align-items:center;font-size:12px;color:var(--k-muted)">Colonne <span class="chips" id="wv-cg"></span></span>
     </div>
-    <div style="overflow:auto;max-height:640px"><table class="antable wv-tab" id="wv-table"></table></div>
+    <div class="tscroll"><table class="antable wv-tab" id="wv-table" data-clip="25"></table></div>
   </div>
 </div>
 </div>

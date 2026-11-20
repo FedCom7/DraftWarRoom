@@ -5,7 +5,7 @@
 .wv .chips{display:flex;gap:3px;flex-wrap:wrap}
 .wv .chips button{padding:4px 9px;font-size:11.5px}
 .wv .chartwrap [data-tt]{cursor:pointer}
-.wv .mv{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,38%) 64px;gap:10px;align-items:center;padding:5px 6px;border-radius:7px;cursor:pointer;font-size:12.5px}
+.wv .mv{display:grid;grid-template-columns:minmax(0,1fr) minmax(90px,38%) 80px;gap:10px;align-items:center;padding:5px 6px;border-radius:7px;cursor:pointer;font-size:12.5px}
 .wv .mv:hover,.wv .mv.on{background:var(--k-p2)}
 .wv .mv .who{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .wv .mv .who small{display:block;color:var(--k-muted);font-size:11px;overflow:hidden;text-overflow:ellipsis}
@@ -33,7 +33,7 @@
 .wv .wv-tab tr.free .spk i{background:#F2D82E}
 .wv .sc .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
 @media (max-width:640px){
-  .wv .mv{grid-template-columns:minmax(0,1fr) 70px 52px;gap:6px}
+  .wv .mv{grid-template-columns:minmax(0,1fr) 60px 72px;gap:6px}
   .wv .wv-sec label{width:100%}
   .wv .wv-sec input{flex:1}
 }
@@ -101,14 +101,37 @@ function EV(p,w){
   else{const b=weekPts(p,w);v=form!=null?0.6*b+0.4*form:b}
   EVC.set(k,v);return v;
 }
-let H=4,WIN=5;
+let H=4,WIN=5,BASIS='ev';
 const weeks=()=>{const o=[];for(let w=WEEK;w<WEEK+H&&w<=18;w++)o.push(w);return o};
 const evH=p=>avg(weeks().map(w=>EV(p,w)))||0;
 
+/* ---------- le partite giocate: stessa simulazione, rifatta sulle giornate passate ----------
+   Ogni giornata della finestra "Forma" usa i punti veri. Una partita saltata (infortunio, bye)
+   vale la media a gara della stagione: si misura il rendimento, non le assenze, e una sola
+   partita giocata nella finestra non diventa la media di tutte. */
+const pastWeeks=()=>{const o=[];for(let w=Math.max(1,LAST-Math.min(WIN,LAST)+1);w<=LAST;w++)o.push(w);return o};
+const BYW=new Map();
+const rowAt=(p,w)=>{let m=BYW.get(p.id);if(!m){m={};(WK()[String(p.id)]||[]).forEach(r=>{m[r[0]]=r});BYW.set(p.id,m)}return m[w]};
+const ppgW=p=>summary(p,WIN).ppg;
+function ACT(p,w){const r=rowAt(p,w);return r&&played(p,r)?(r[1]||0):(summary(p,99).ppg||0)}
+const actH=p=>avg(pastWeeks().map(w=>ACT(p,w)))||0;
+const VAL={
+  ev:{f:EV,w:weeks,h:evH},
+  past:{f:ACT,w:pastWeeks,h:actH}
+};
+const OTHER=()=>BASIS==='ev'?'past':'ev';
+const V=(p,w)=>VAL[BASIS].f(p,w);
+const wks=()=>VAL[BASIS].w();
+const valH=p=>VAL[BASIS].h(p);
+const winTxt=()=>WIN>=LAST?'della stagione':`delle ultime ${pastWeeks().length} giornate`;
+/* "attesi" o "giocati", con il periodo */
+const bTxt=(b=BASIS)=>b==='ev'?`attesi nelle prossime ${weeks().length}`:`giocati ${winTxt()}`;
+const bShort=(b=BASIS)=>b==='ev'?'attesi':'giocati';
+
 /* ---------- formazione migliore: prima i posti fissi, poi il flex RB/WR ---------- */
 const FIX=[['QB',1],['RB',2],['WR',2],['TE',1],['DST',1],['K',1]];
-function lineup(roster,w){
-  const by={};roster.forEach(p=>{(by[p.pos]=by[p.pos]||[]).push({p,v:EV(p,w)})});
+function lineup(roster,w,vf=V){
+  const by={};roster.forEach(p=>{(by[p.pos]=by[p.pos]||[]).push({p,v:vf(p,w)})});
   Object.values(by).forEach(a=>a.sort((x,y)=>y.v-x.v));
   let tot=0;const st=new Set();
   FIX.forEach(([pos,n])=>{(by[pos]||[]).splice(0,n).forEach(x=>{tot+=x.v;st.add(x.p.id)})});
@@ -116,22 +139,27 @@ function lineup(roster,w){
   if(fx){tot+=fx.v;st.add(fx.p.id)}
   return{tot,st};
 }
-const lineupTot=(roster)=>weeks().reduce((s,w)=>s+lineup(roster,w).tot,0);
+const lineupTot=(roster,b=BASIS)=>VAL[b].w().reduce((s,w)=>s+lineup(roster,w,VAL[b].f).tot,0);
+/* i titolari di oggi secondo la base scelta */
+const starters=ros=>BASIS==='ev'?lineup(ros,WEEK,EV).st:lineup(ros,0,p=>valH(p)).st;
+/* guadagno di una sostituzione sull'altra base, per metterlo accanto */
+function altGain(roster,c,d){const b=OTHER(),n=VAL[b].w().length||1;
+  return(lineupTot(roster.filter(x=>x.id!==d.id).concat(c),b)-lineupTot(roster,b))/n}
 
 const mine=()=>POOL.filter(p=>p.own===MY);
 const free=()=>POOL.filter(p=>!p.own);
 /* la mossa migliore per ogni libero: si prova a togliere ognuno dei tuoi */
 function movesFor(roster,cands){
-  const base=lineupTot(roster),n=weeks().length;
+  const base=lineupTot(roster),n=wks().length||1;
   const drops=roster.filter(p=>p.inj!=='IR');
   const out=[],NEED={QB:1,RB:3,WR:3,TE:1,K:1,DST:1};
   /* un libero peggiore di tutti i tuoi pari ruolo in ogni giornata non entra mai in
      formazione, purché tu ne abbia abbastanza per riempire i posti (flex compreso) */
   const same=pos=>roster.filter(p=>p.pos===pos);
   cands.forEach(c=>{
-    if(weeks().every(w=>EV(c,w)<=0.3))return;
+    if(wks().every(w=>V(c,w)<=0.3))return;
     const sp=same(c.pos);
-    if(sp.length>=NEED[c.pos]&&weeks().every(w=>sp.every(d=>EV(c,w)<=EV(d,w))))return;
+    if(sp.length>=NEED[c.pos]&&wks().every(w=>sp.every(d=>V(c,w)<=V(d,w))))return;
     let best=null;
     drops.forEach(d=>{
       const g=(lineupTot(roster.filter(x=>x.id!==d.id).concat(c))-base)/n;
@@ -139,7 +167,7 @@ function movesFor(roster,cands){
       const sc=g-0.012*(d.proj||0);
       if(!best||sc>best.sc)best={c,d,gain:g,sc};
     });
-    if(best)out.push(best);
+    if(best){best.alt=altGain(roster,best.c,best.d);out.push(best)}
   });
   return out.sort((a,b)=>b.gain-a.gain||b.sc-a.sc);
 }
@@ -207,21 +235,21 @@ const topOf=(pos,n)=>posPool(pos).sort((a,b)=>evH(b)-evH(a)).slice(0,n);
 /* ---------- KPI ---------- */
 function renderStrip(){
   const best=MOVES[0],tot=PLAN.reduce((s,m)=>s+m.gain,0);
-  const ros=mine(),lw=lineup(ros,WEEK);
+  const ros=mine(),stS=starters(ros);
   const gaps=POSS.map(pos=>{
-    const st=ros.filter(p=>p.pos===pos&&lw.st.has(p.id)).map(evH).sort((a,b)=>a-b);
-    const fr=free().filter(p=>p.pos===pos).map(evH).sort((a,b)=>b-a);
+    const st=ros.filter(p=>p.pos===pos&&stS.has(p.id)).map(valH).sort((a,b)=>a-b);
+    const fr=free().filter(p=>p.pos===pos).map(valH).sort((a,b)=>b-a);
     return{pos,d:st.length&&fr.length?fr[0]-st[0]:(fr[0]||0)}}).sort((a,b)=>b.d-a.d);
   const card=(title,k1,v1,k2,v2,verd,col)=>`<div class="sc" style="border-top-color:${col||'var(--k-muted)'}"><h4>${title}</h4>
     <div class="kv"><span>${k1}</span><b>${v1}</b></div><div class="kv"><span>${k2}</span><b>${v2}</b></div><div class="verd">${verd}</div></div>`;
   $('#wv-strip').innerHTML=
     card('Mossa migliore','prendi',best?esc(best.c.name):'—','taglia',best?esc(best.d.name):'—',
-      best&&best.gain>0.4?`+${n1(best.gain)} punti a giornata ai titolari.`:'Nessun libero migliora i titolari: la rosa è già al massimo.',C_FREE)+
+      best&&best.gain>0.4?`+${n1(best.gain)} punti a giornata ai titolari (${bTxt()}). Sull'altra base: ${best.alt>=0?'+':''}${n1(best.alt)} ${bShort(OTHER())}.`:'Nessun libero migliora i titolari: la rosa è già al massimo.',C_FREE)+
     card('Piano completo','mosse',PLAN.length,'guadagno',PLAN.length?'+'+n1(tot)+' a giornata':'—',
-      PLAN.length?`Sulle prossime ${weeks().length} giornate: ${n0(tot*weeks().length)} punti in più.`:'Tieni la rosa così.',C_FREE)+
+      PLAN.length?(BASIS==='ev'?`Sulle prossime ${weeks().length} giornate: ${n0(tot*weeks().length)} punti in più.`:`Con queste mosse, ${winTxt()} avresti fatto ${n0(tot*pastWeeks().length)} punti in più.`):'Tieni la rosa così.',C_FREE)+
     card('Reparto da guardare','più scoperto',gaps[0].d>0?gaps[0].pos:'nessuno','scarto',gaps[0].d>0?'+'+n1(gaps[0].d)+' a gara':'—',
-      gaps[0].d>0?`Il miglior ${gaps[0].pos} libero vale più del tuo titolare più debole del reparto.`:'Ogni tuo titolare vale più del miglior libero.',C_ME)+
-    card('Pool','liberi',free().length,'tuoi',ros.length,`Dati fino alla giornata ${LAST}; orizzonte giornate ${weeks()[0]}–${weeks().slice(-1)[0]}.`);
+      gaps[0].d>0?`Il miglior ${gaps[0].pos} libero vale più del tuo titolare più debole del reparto (${bShort()}).`:'Ogni tuo titolare vale più del miglior libero.',C_ME)+
+    card('Pool','liberi',free().length,'tuoi',ros.length,BASIS==='ev'?`Dati fino alla giornata ${LAST}; orizzonte giornate ${weeks()[0]}–${weeks().slice(-1)[0]}.`:`Confronto sulle partite giocate: giornate ${pastWeeks()[0]}–${LAST}.`);
 }
 
 /* ---------- mosse ---------- */
@@ -233,29 +261,31 @@ function renderMoves(){
   const max=Math.max(...list.map(m=>m.gain),0.5);
   $('#wv-moves').innerHTML=list.map((m,i)=>{
     const c=m.c,d=m.d,fc=summary(c,WIN),fd=summary(d,WIN);
-    const why=[`${n1(evH(c))} contro ${n1(evH(d))} attesi`];
+    const why=[`attesi ${n1(evH(c))} contro ${n1(evH(d))}`,`giocati ${n1(fc.ppg)} contro ${n1(fd.ppg)}`];
     if(fc.tsh!=null&&['WR','TE','RB'].includes(c.pos))why.push(`${n0(fc.tsh)}% target`);
-    if(fc.ppg!=null)why.push(`${n1(fc.ppg)} a gara`);
     const warn=(d.proj||0)>(c.proj||0)+15?' · <span style="color:var(--delayed)">a lungo termine vale più '+esc(last(d.name))+'</span>':'';
     const on=S.b===c.id&&S.a===d.id?' on':'';
-    return`<div class="mv${on}" data-mv="${i}" data-tt="${attr(`<b>${esc(c.name)} al posto di ${esc(d.name)}</b><span>titolari: ${m.gain>=0?'+':''}${n1(m.gain)} punti a giornata</span>`)}">
+    return`<div class="mv${on}" data-mv="${i}" data-tt="${attr(`<b>${esc(c.name)} al posto di ${esc(d.name)}</b><span>titolari: ${m.gain>=0?'+':''}${n1(m.gain)} punti a giornata ${bTxt()}</span><span>${bShort(OTHER())}: ${m.alt>=0?'+':''}${n1(m.alt)}</span>`)}">
       <div class="who"><span class="in">${esc(c.name)}</span> <span style="color:var(--k-muted)">${c.pos} ${c.nfl}</span>
         <small><span class="out">al posto di ${esc(d.name)}</span> · ${why.join(' · ')}${warn}</small></div>
       <div class="bar"><i style="width:${Math.max(2,Math.max(0,m.gain)/max*100)}%"></i></div>
-      <div class="v">${m.gain>=0?'+':''}${n1(m.gain)}</div></div>`}).join('');
+      <div class="v">${m.gain>=0?'+':''}${n1(m.gain)}<small title="${bShort(OTHER())}" style="display:block;font-size:10px;font-weight:400;color:${m.alt>0.4?'var(--k-muted)':'var(--delayed)'}">${bShort(OTHER())} ${m.alt>=0?'+':''}${n1(m.alt)}</small></div></div>`}).join('');
   $('#wv-moves').onclick=e=>{const r=e.target.closest('[data-mv]');if(!r)return;const m=list[+r.dataset.mv];
     S.a=m.d.id;S.b=m.c.id;S.rpos=m.c.pos;renderAll(false);document.getElementById('wv-h2h-cards').scrollIntoView({behavior:'smooth',block:'start'})};
   $('#wv-plan').innerHTML=PLAN.length?`<div class="plan">${PLAN.map((m,i)=>`<div class="st"><div class="n">MOSSA ${i+1}</div>
       <div><b>+ ${esc(m.c.name)}</b> <span style="color:var(--k-muted)">${m.c.pos}</span></div>
-      <div style="color:var(--k-muted)">− ${esc(m.d.name)} ${m.d.pos}</div><div class="g">+${n1(m.gain)}</div></div>`).join('')}</div>`
+      <div style="color:var(--k-muted)">− ${esc(m.d.name)} ${m.d.pos}</div><div class="g">+${n1(m.gain)} <span style="font:400 11px var(--mono);color:var(--k-muted)">${bShort(OTHER())} ${m.alt>=0?'+':''}${n1(m.alt)}</span></div></div>`).join('')}</div>`
     :'<p class="cn">Nessuna mossa migliora i titolari di almeno mezzo punto a giornata.</p>';
 }
 
 /* ---------- dumbbell per reparto ---------- */
 function renderGap(){
-  const ros=mine(),lw=lineup(ros,WEEK);
-  const rows=POSS.map(pos=>({pos,me:ros.filter(p=>p.pos===pos),fr:free().filter(p=>p.pos===pos).sort((a,b)=>evH(b)-evH(a)).slice(0,3)}));
-  const all=rows.flatMap(r=>[...r.me,...r.fr].map(evH));
+  const ros=mine(),lw={st:starters(ros)};
+  const rows=POSS.map(pos=>({pos,me:ros.filter(p=>p.pos===pos),fr:free().filter(p=>p.pos===pos).sort((a,b)=>valH(b)-valH(a)).slice(0,3)}));
+  const all=rows.flatMap(r=>[...r.me,...r.fr].map(valH));
+  const both=p=>`attesi ${n1(evH(p))} · giocati ${n1(actH(p))} a giornata (${summary(p,WIN).g} gare su ${pastWeeks().length})`;
+  $('#wv-gap-cn').innerHTML=(BASIS==='ev'?`Valore atteso a giornata nelle prossime ${weeks().length}.`:`Punti veri a giornata ${winTxt()}; una partita saltata vale la sua media di stagione.`)+
+    ' Blu: i tuoi giocatori del reparto, pieni se titolari e vuoti se in panchina. Giallo: i tre liberi migliori. Un giallo a destra del blu più debole pieno è un titolare da cambiare. Tocca un reparto per analizzarlo.';
   const W=560,L=46,Rr=18,T=8,rowH=46,Hh=T+rows.length*rowH+22,max=Math.max(...all,5)*1.08;
   const x=v=>L+v/max*(W-L-Rr);
   let s='';
@@ -264,15 +294,15 @@ function renderGap(){
     const y=T+i*rowH+rowH/2,on=S.rpos===r.pos;
     s+=`<rect x="0" y="${y-rowH/2+2}" width="${W}" height="${rowH-4}" rx="6" fill="${on?'#151D27':'transparent'}" data-rpos="${r.pos}" style="cursor:pointer"/>`;
     s+=`<text x="8" y="${y+4}" fill="${on?'#E8EDF2':INK}" font-size="12" font-weight="700" data-rpos="${r.pos}" style="cursor:pointer">${r.pos}</text>`;
-    const vals=[...r.me,...r.fr].map(evH);
+    const vals=[...r.me,...r.fr].map(valH);
     if(vals.length)s+=`<line x1="${x(Math.min(...vals)).toFixed(1)}" y1="${y}" x2="${x(Math.max(...vals)).toFixed(1)}" y2="${y}" stroke="#2A3542" stroke-width="2"/>`;
-    const st=r.me.filter(p=>lw.st.has(p.id)).map(evH);
+    const st=r.me.filter(p=>lw.st.has(p.id)).map(valH);
     if(st.length){const lo=Math.min(...st);s+=`<line x1="${x(lo).toFixed(1)}" y1="${y-15}" x2="${x(lo).toFixed(1)}" y2="${y+15}" stroke="${C_ME}" stroke-dasharray="2 2" opacity=".7"/>`}
     r.me.forEach((p,k)=>{const isSt=lw.st.has(p.id),cy=y-6+(k%2)*0;
-      s+=`<circle cx="${x(evH(p)).toFixed(1)}" cy="${(y-5).toFixed(1)}" r="5.5" fill="${isSt?C_ME:'#10161E'}" stroke="${C_ME}" stroke-width="2" data-pid="${p.id}" data-tt="${ttP(p,`${n1(evH(p))} attesi a giornata · ${isSt?'titolare':'panchina'}`)}"/>`});
-    r.fr.forEach(p=>{s+=`<circle cx="${x(evH(p)).toFixed(1)}" cy="${(y+6).toFixed(1)}" r="5.5" fill="${C_FREE}" stroke="#10161E" stroke-width="2" data-pid="${p.id}" data-tt="${ttP(p,`${n1(evH(p))} attesi a giornata`)}"/>`});
+      s+=`<circle cx="${x(valH(p)).toFixed(1)}" cy="${(y-5).toFixed(1)}" r="5.5" fill="${isSt?C_ME:'#10161E'}" stroke="${C_ME}" stroke-width="2" data-pid="${p.id}" data-tt="${ttP(p,`${both(p)} · ${isSt?'titolare':'panchina'}`)}"/>`});
+    r.fr.forEach(p=>{s+=`<circle cx="${x(valH(p)).toFixed(1)}" cy="${(y+6).toFixed(1)}" r="5.5" fill="${C_FREE}" stroke="#10161E" stroke-width="2" data-pid="${p.id}" data-tt="${ttP(p,both(p))}"/>`});
     const bf=r.fr[0];
-    if(bf){const lab=last(bf.name),bx=x(evH(bf));s+=`<text x="${Math.min(bx+9,W-Rr-2).toFixed(1)}" y="${(y+19).toFixed(1)}" fill="${AX}" font-size="9.5" text-anchor="${bx>W-90?'end':'start'}">${esc(lab)}</text>`}
+    if(bf){const lab=last(bf.name),bx=x(valH(bf));s+=`<text x="${Math.min(bx+9,W-Rr-2).toFixed(1)}" y="${(y+19).toFixed(1)}" fill="${AX}" font-size="9.5" text-anchor="${bx>W-90?'end':'start'}">${esc(lab)}</text>`}
   });
   $('#wv-gap').innerHTML=svgEl(W,Hh,s);
   $('#wv-gap').onclick=e=>{const r=e.target.closest('[data-rpos]');if(r){S.rpos=r.getAttribute('data-rpos');S.a=null;S.b=null;renderAll(false)}};
@@ -423,10 +453,12 @@ function h2hCard(p,c,role){
 function readH2H(A,B){
   const v=[],ros=mine(),has=ros.some(p=>p.id===A.id)&&!B.own;
   if(has){
-    const r2=ros.filter(p=>p.id!==A.id).concat(B),g=(lineupTot(r2)-lineupTot(ros))/weeks().length;
-    v.push(g>0.4?`Sostituire <b>${esc(A.name)}</b> con <b>${esc(B.name)}</b> porta <b>+${n1(g)}</b> punti a giornata ai titolari nelle prossime ${weeks().length}.`
+    const r2=ros.filter(p=>p.id!==A.id).concat(B),g=(lineupTot(r2)-lineupTot(ros))/(wks().length||1),ga=altGain(ros,B,A);
+    v.push(g>0.4?`Sostituire <b>${esc(A.name)}</b> con <b>${esc(B.name)}</b> porta <b>+${n1(g)}</b> punti a giornata ai titolari (${bTxt()}).`
       :g<-0.4?`Lo scambio <b>toglie</b> ${n1(-g)} punti a giornata ai titolari: ${esc(A.name)} serve di più.`
       :`Per i titolari non cambia quasi nulla (${g>=0?'+':''}${n1(g)} a giornata): la scelta vale solo come riserva o per i bye.`);
+    v.push(BASIS==='ev'?`Sulle partite giocate ${winTxt()} la stessa mossa avrebbe dato <b>${ga>=0?'+':''}${n1(ga)}</b> a giornata${(ga<0.4)!==(g<0.4)?': i dati passati e il valore atteso non sono d\'accordo, guarda il grafico dei punti qui sopra':''}.`
+      :`Sul valore atteso delle prossime ${weeks().length} la stessa mossa vale <b>${ga>=0?'+':''}${n1(ga)}</b> a giornata${(ga<0.4)!==(g<0.4)?': passato e proiezioni non sono d\'accordo':''}.`);
     const bm=movesFor(ros,[B])[0];
     if(bm&&bm.d.id!==A.id&&bm.gain>g+0.4)v.push(`Per prendere ${esc(last(B.name))} il taglio migliore però è <b>${esc(bm.d.name)}</b>: +${n1(bm.gain)} a giornata.`);
   }
@@ -457,8 +489,8 @@ function renderH2H(){
   const pos=S.rpos;
   let A=ros.find(p=>p.id===S.a);
   let B=POOL.find(p=>p.id===S.b);
-  if(!B){const m=MOVES.find(m=>m.c.pos===pos);B=m?m.c:free().filter(p=>p.pos===pos).sort((a,b)=>evH(b)-evH(a))[0]}
-  if(!A){const m=MOVES.find(m=>B&&m.c.id===B.id);A=m?m.d:ros.filter(p=>p.pos===pos).sort((a,b)=>evH(a)-evH(b))[0]||ros[ros.length-1]}
+  if(!B){const m=MOVES.find(m=>m.c.pos===pos);B=m?m.c:free().filter(p=>p.pos===pos).sort((a,b)=>valH(b)-valH(a))[0]}
+  if(!A){const m=MOVES.find(m=>B&&m.c.id===B.id);A=m?m.d:ros.filter(p=>p.pos===pos).sort((a,b)=>valH(a)-valH(b))[0]||ros[ros.length-1]}
   if(!A||!B)return;
   S.a=A.id;S.b=B.id;
   $('#wv-mine').innerHTML=ros.map(p=>`<option value="${p.id}"${p.id===A.id?' selected':''}>${esc(p.name)} · ${p.pos}</option>`).join('');
@@ -491,16 +523,23 @@ const COLS=[
   ['Floor','floor',p=>summary(p,WIN).floor],['Ceil','ceil',p=>summary(p,WIN).ceil],
   ['ESPN g'+WEEK,'pw',p=>PW(p,WEEK)],['Proj RoS','proj',p=>p.proj],['% ESPN','pct',p=>p.pct,'%'],['+24h','add',p=>((TOP.trending||{})[p.id]||{}).add||null],['Bye','bye',p=>p.bye]
 ];
+/* gruppi di colonne: 23 colonne insieme non stanno in una finestra normale */
+const CG={val:['Valore',['ev','dv','ppg','ppgS','tr','pw','proj','bye']],
+  use:['Utilizzo',['ppg','tgt','tsh','car','opp','snap','rz','td','wopr']],
+  risk:['Rischio e mercato',['ev','floor','ceil','pct','add','bye']],
+  all:['Tutte',null]};
+const visCols=()=>{const g=CG[S.cg||'val'][1];return COLS.filter((c,i)=>i<3||!g||g.includes(c[1]))};
 let MYST=null;
 function dvOf(p){
   if(!MYST)return null;
   const el=p.pos==='RB'||p.pos==='WR'?[...MYST[p.pos]||[],...MYST.FLEX||[]]:(MYST[p.pos]||[]);
   if(!el.length)return null;
-  return evH(p)-Math.min(...el);
+  return valH(p)-Math.min(...el);
 }
 function renderTable(){
-  const ros=mine(),lw=lineup(ros,WEEK);
-  MYST={};ros.filter(p=>lw.st.has(p.id)).forEach(p=>{(MYST[p.pos]=MYST[p.pos]||[]).push(evH(p))});
+  const ros=mine(),stS=starters(ros);
+  MYST={};ros.filter(p=>stS.has(p.id)).forEach(p=>{(MYST[p.pos]=MYST[p.pos]||[]).push(valH(p))});
+  COLS.find(c=>c[1]==='dv')[0]=BASIS==='ev'?'Δ vs tuo':'Δ vs tuo (giocati)';
   const qq=S.q.trim().toLowerCase();
   let list=POOL.filter(p=>(S.pos==='ALL'||p.pos===S.pos)&&(qq?p.name.toLowerCase().includes(qq):true)&&
     (p.own===MY?S.showMine:p.own?S.showOwn:true));
@@ -512,16 +551,35 @@ function renderTable(){
   const mx=Math.max(...list.map(p=>Math.max(0,...series(p,r=>r[1]).filter(v=>v!=null))),10);
   const fmt=(c,v)=>v==null?'—':c[1]==='wopr'?f2(v):c[1]==='add'?(v>=1000?Math.round(v/1000)+'k':v):c[1]==='bye'||c[1]==='td'?v:
     c[1]==='dv'||c[1]==='tr'?`<span style="color:${v>0.4?'var(--live)':v<-0.4?'var(--offline)':'var(--k-muted)'}">${v>0?'+':''}${n1(v)}</span>`:n1(v)+(c[3]||'');
-  $('#wv-table').innerHTML=`<thead><tr>${COLS.map(c=>`<th data-sort="${c[1]}" class="${c[2]?'num':''}${S.sort===c[1]?' on':''}">${c[0]}${S.sort===c[1]?(S.dir<0?' ↓':' ↑'):''}</th>`).join('')}</tr></thead><tbody>`+
+  const VC=visCols();
+  const cg=$('#wv-cg');if(cg){cg.innerHTML=Object.entries(CG).map(([k,v])=>`<button data-c="${k}" class="${k===(S.cg||'val')?'on':''}">${v[0]}</button>`).join('');
+    cg.onclick=e=>{const b=e.target.closest('button');if(b){S.cg=b.dataset.c;renderTable()}}}
+  $('#wv-table').innerHTML=`<thead><tr>${VC.map(c=>`<th data-sort="${c[1]}" class="${c[2]?'num':''}${S.sort===c[1]?' on':''}">${c[0]}${S.sort===c[1]?(S.dir<0?' ↓':' ↑'):''}</th>`).join('')}</tr></thead><tbody>`+
     list.map(p=>{
       const sp=series(p,r=>r[1]).map(v=>v==null?'<i class="z"></i>':`<i style="height:${Math.max(2,v/mx*18).toFixed(0)}px" title="${n1(v)}"></i>`).join('');
       const ij=injOf(p),st=p.inj||(ij&&ij.s)||'';
       return`<tr class="${p.own===MY?'mine':!p.own?'free':''}"><td data-pid="${p.id}"><b>${esc(p.name)}</b> <span style="color:var(--k-muted)">${p.nfl}</span>${st?` <span class="tag2 ${OUT.includes(st)||st==='D'?'bad':'warn'}">${esc(st)}</span>`:''}<span class="spk">${sp}</span></td>
         <td><span class="pos pos-${p.pos}">${p.pos}</span></td>
         <td>${p.own===MY?'<span class="tag2" style="color:#3CC7F5">tuo</span>':p.own?`<span class="tag2">${esc(TBY.get(p.own).abbr)}</span>`:'<span class="tag2 acc">libero</span>'}</td>
-        ${COLS.slice(3).map(c=>`<td class="num">${fmt(c,c[2](p))}</td>`).join('')}</tr>`}).join('')+'</tbody>';
+        ${VC.slice(3).map(c=>`<td class="num">${fmt(c,c[2](p))}</td>`).join('')}</tr>`}).join('')+'</tbody>';
   $('#wv-table').querySelector('thead').onclick=e=>{const th=e.target.closest('th');if(!th)return;const k=th.dataset.sort;
     if(S.sort===k)S.dir=-S.dir;else{S.sort=k;S.dir=['name','pos','own','bye'].includes(k)?1:-1}renderTable()};
+}
+
+/* ---------- regole dei waiver: priorità, quando si elaborano, chi ti sta davanti ---------- */
+function renderRules(){
+  const el=$('#wv-rules');if(!el)return;
+  const R0=TOP.rules||{},ST=TOP.standings||{};
+  const order=Object.entries(ST).filter(([,v])=>v.waiver).sort((a,b)=>a[1].waiver-b[1].waiver);
+  const myR=(ST[MY]||{}).waiver;
+  const it={MONDAY:'lun',TUESDAY:'mar',WEDNESDAY:'mer',THURSDAY:'gio',FRIDAY:'ven',SATURDAY:'sab',SUNDAY:'dom'};
+  const days=(R0.waiverDays||[]).map(d=>it[d]||d).join(' · ');
+  /* chi ti precede e di cosa ha bisogno: è lui che può soffiarti il libero */
+  const short=t=>{const r=POOL.filter(p=>p.own===+t);return ['QB','RB','WR','TE'].filter(pos=>r.filter(p=>p.pos===pos).length<=({QB:1,RB:2,WR:2,TE:1})[pos])};
+  const ahead=order.filter(([t,v])=>myR&&v.waiver<myR&&+t!==MY);
+  el.innerHTML=`<span><b>Priorità waiver:</b> ${order.map(([t,v])=>`<span style="${+t===MY?'color:var(--k-me);font-weight:700':''}">${v.waiver}° ${esc(TBY.get(+t).abbr)}</span>`).join(' · ')}</span>`+
+    `<span style="color:var(--k-muted)">${R0.waiverType==='WAIVERS_TRADITIONAL'?'ordine tradizionale, chi prende scende in fondo':''}${R0.faab?' · FAAB':''}${days?` · elaborazione ${days}${R0.waiverHour!=null?' alle '+R0.waiverHour+':00 (orario di ESPN)':''}`:''}${R0.waiverHours?` · un giocatore tagliato resta in waiver ${R0.waiverHours} ore`:''}</span>`+
+    (ahead.length?`<span class="sp">Ti precede ${ahead.map(([t])=>{const s=short(t);return`<b>${esc(TBY.get(+t).name)}</b>${s.length?' (corto di '+s.join(', ')+')':''}`}).join(', ')}: un libero in quei reparti rischia di andare a lui.</span>`:'<span class="sp" style="color:var(--live)">Sei primo nella priorità: ogni richiesta di waiver passa prima la tua.</span>');
 }
 
 /* ---------- regia ---------- */
@@ -532,14 +590,18 @@ function posChips(el,list,cur,cb){
 function renderAll(recompute){
   hookTips();
   /* il live richiama la pagina ogni 30 secondi: si ricalcola solo se le rose sono cambiate */
-  const sig=H+'|'+POOL.map(p=>p.own||0).join('');
+  const sig=H+'|'+BASIS+'|'+WIN+'|'+POOL.map(p=>p.own||0).join('');
   if(sig!==SIG){SIG=sig;PLAN=plan();MOVES=movesByPos()}
   if(!S.rpos)S.rpos=MOVES[0]?MOVES[0].c.pos:'WR';
   const mk=metricsFor(S.rpos);if(!mk.includes(S.metric))S.metric='ev';
   $('#wv-metric').innerHTML=mk.map(k=>`<option value="${k}"${k===S.metric?' selected':''}>${METRICS[k].l()}</option>`).join('');
+  $('#wv-basis').innerHTML=[['ev','Valore atteso'],['past','Partite giocate']].map(([k,l])=>`<button data-c="${k}" class="${k===BASIS?'on':''}">${l}</button>`).join('');
+  $('#wv-basis').onclick=e=>{const b=e.target.closest('button');if(!b||b.dataset.c===BASIS)return;BASIS=b.dataset.c;if(S.metric==='ev'||S.metric==='ppg')S.metric=BASIS==='ev'?'ev':'ppg';renderAll(false)};
+  $('#wv-moves-cn').innerHTML=`Per ogni libero il taglio che rende di più, dando per fatte le mosse del piano negli altri reparti (chi non vale nulla si taglia una volta sola). A parità di guadagno si taglia chi vale meno nel resto della stagione. La barra è il guadagno dei titolari in punti a giornata, ${BASIS==='ev'?`sul valore atteso delle prossime ${weeks().length}`:`rigiocando le partite ${winTxt()} con i punti veri`}; sotto il numero c'è lo stesso guadagno sull'altra base. Tocca una riga per aprire il testa a testa qui sotto.`;
   posChips($('#wv-pos'),['ALL',...POSS],S.pos,c=>{S.pos=c;if(c!=='ALL'){S.rpos=c;S.a=null;S.b=null}renderAll(false)});
   posChips($('#wv-rpos'),POSS,S.rpos,c=>{S.rpos=c;if(S.pos!=='ALL')S.pos=c;S.a=null;S.b=null;renderAll(false)});
   $('#wv-info').textContent=`${free().length} liberi · forma fino alla giornata ${LAST}`;
+  renderRules();
   renderStrip();renderMoves();renderGap();renderLadder();renderScatter();renderH2H();renderTable();
 }
 $('#wv-win').onchange=e=>{WIN=+e.target.value;renderAll(false)};
