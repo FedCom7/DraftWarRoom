@@ -94,6 +94,18 @@ più di un tuo titolare; scadenza degli scambi; priorità e giorni dei waiver; s
 settimana; mosse degli avversari. Sotto: formazione schierata contro migliore, orari
 delle partite in ora italiana, bollettino dei tuoi giocatori, liberi da guardare.
 
+## La stagione (`#campionato`, `web/parts/pV_*.html`)
+
+Tutta la lega insieme, solo sulle giornate concluse: andamento (punti fatti, subiti,
+cumulati, media mobile, posizione in classifica), punteggi giornata per giornata colorati
+per posizione, punti fatti e subiti con media, mediana, oscillazione e record tutti contro
+tutti, media punti per ruolo, quota dei punti per ruolo, titolari contro panchina
+(formazione ideale a posteriori, punti persi, sconfitte evitabili), volume di gioco
+(target, ricezioni, corse, yard, TD, red zone) e prestazioni migliori. Filtri: titolari,
+panchina o tutti; tutta la stagione o le ultime 5 o 3 giornate. Unisce `lg.byWeek`
+(formazioni e punti ESPN) e `weekly` (statistiche unite). L'id è `campionato` e non
+`season` perché `season` è il nome del blocco Stagione.
+
 ## Lega NFL (`#nflleague`, `web/parts/pU_*.html`)
 
 Classifica per division (da `games.csv`), attacchi e difese a confronto (punti, yard,
@@ -119,6 +131,10 @@ partite che restano al giocatore (`window.DWR_PPG`), non per 17.
 Sotto i 1100px le griglie diventano a una colonna; le tabelle che scorrono in
 orizzontale tengono fisso il nome; le tabelle lunghe (`data-clip="N"`) mostrano le prime
 N righe e un pulsante "Mostra tutte" invece di un riquadro con scroll interno.
+
+I grafici di stagione usano `web/parts/pR_charts.html` (`window.DWRC`): colori fissi per
+squadra fantasy (gli stessi ovunque: Sommo azzurro, Oscurus rosso, lasers verde, Capi
+arancio), tooltip con `data-tip="Titolo|riga|riga"`, griglia e assi comuni.
 
 ## Partite NFL (`#nfl`, `web/parts/pN_*.html`)
 

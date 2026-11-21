@@ -300,6 +300,7 @@ function renderMyTeam(){
         <td class="num" style="color:${s>=1.05?'var(--live)':s<=0.95?'var(--offline)':'var(--k-muted)'}">${f2(s)}</td></tr>`}).join('')+'</tbody>';
 
   deltaChart(ros);
+  heatChart();
   { const ol=outlook(MY), el=$('#mt-season');
     if(el)el.innerHTML=`<thead><tr><th>Sett.</th><th>Avversario</th><th class="num">Tu</th><th class="num">Lui</th><th class="num">Vittoria</th><th>Buchi in formazione e bye</th></tr></thead><tbody>`+
       ol.map(r=>`<tr class="${r.w===WEEK?'mine':''}"><td><b>${r.w}</b>${r.po?' <span class="tag2 acc">playoff</span>':''}</td>
@@ -308,6 +309,7 @@ function renderMyTeam(){
         <td class="num" style="color:${r.prob==null?'var(--k-muted)':r.prob>=0.6?'var(--live)':r.prob<=0.4?'var(--offline)':'var(--k-ink)'}">${r.prob==null?'—':Math.round(r.prob*100)+'%'}</td>
         <td style="white-space:normal">${r.holes.length?r.holes.map(h=>`<span class="tag2 bad">${h.lab} ${h.p?esc(h.p.name.split(' ').slice(-1)[0])+(h.p.bye===r.w?' (bye)':h.p.inj?' ('+h.p.inj+')':''):'scoperto'}</span>`).join(' '):'<span style="color:var(--live)">formazione completa</span>'}
           ${r.byes.filter(p=>!r.holes.some(h=>h.p&&h.p.id===p.id)).length?`<span style="color:var(--k-muted);font-size:11.5px"> · in bye anche ${r.byes.filter(p=>!r.holes.some(h=>h.p&&h.p.id===p.id)).map(p=>esc(p.name.split(' ').slice(-1)[0])).join(', ')}</span>`:''}</td></tr>`).join('')+'</tbody>';
+    seasonChart(ol);
     const bad=ol.filter(r=>r.holes.length);
     const n=$('#mt-season-note');
     if(n)n.innerHTML=bad.length?`<b style="color:var(--offline)">Settimane da sistemare: ${bad.map(r=>r.w).join(', ')}.</b> Un buco in formazione vale zero punti: serve un waiver o un cambio prima del lock.`:'<span style="color:var(--live)">Nessuna settimana con buchi in formazione da qui alla fine.</span>';
@@ -341,11 +343,77 @@ function renderMyTeam(){
   read.push('In una lega da quattro il pool libero è profondo: un waiver con volume in crescita vale più di un titolare famoso in calo.');
   $('#mt-read').innerHTML=read.map(t=>`<li>${t}</li>`).join('');
 }
+/* colonne affiancate: la tua formazione migliore contro quella dell'avversario, giornata per giornata */
+function seasonChart(ol){
+  const C=window.DWRC,el=$('#mt-season-ch');if(!el||!C)return;
+  const W=C.wOf(el,880),H=200,L=40,R=12,T=28,B=30,n=ol.length;
+  const max=Math.max(...ol.flatMap(r=>[r.tot,r.ot||0]))*1.1,Y=v=>H-B-v/max*(H-B-T);
+  const gw=(W-L-R)/n,bw=Math.min(26,gw*0.32);
+  let g=C.yGrid(L,R,W,Y,C.niceTicks(0,max,4));
+  ol.forEach((r,i)=>{
+    const cx=L+gw*(i+0.5);
+    if(r.po)g+=`<rect x="${C.fx(L+gw*i+1)}" y="${T-22}" width="${C.fx(gw-2)}" height="${H-B-T+22}" fill="#F2D82E" opacity=".05" rx="4"/>`;
+    const bar=(x,v,c,tip)=>`<rect x="${C.fx(x)}" y="${C.fx(Y(v))}" width="${C.fx(bw)}" height="${C.fx(Math.max(0,H-B-Y(v)))}" rx="4" fill="${c}" data-tip="${C.attr(tip)}"/>`;
+    const holes=r.holes.length?'|buchi: '+r.holes.map(h=>h.lab+(h.p?' '+h.p.name.split(' ').slice(-1)[0]:'')).join(', '):'';
+    if(r.ot!=null){
+      g+=bar(cx-bw-1,r.tot,C.TEAMCOL[MY],`Settimana ${r.w} · tu|${n1(r.tot)} punti attesi${holes}`);
+      g+=bar(cx+1,r.ot,C.TEAMCOL[r.opp]||'#7C8996',`Settimana ${r.w} · ${TBY.get(r.opp).name}|${n1(r.ot)} punti attesi`);
+      g+=`<text x="${C.fx(cx)}" y="${C.fx(Math.min(Y(r.tot),Y(r.ot))-6)}" fill="${C.INK}" font-size="10.5" font-weight="700" text-anchor="middle">${Math.round(r.prob*100)}%</text>`;
+    }else{
+      g+=bar(cx-bw/2,r.tot,C.TEAMCOL[MY],`Settimana ${r.w} · playoff|${n1(r.tot)} punti attesi${holes}`);
+      g+=`<text x="${C.fx(cx)}" y="${C.fx(Y(r.tot)-6)}" fill="${C.MUTED}" font-size="10" text-anchor="middle">playoff</text>`;
+    }
+    if(r.holes.length)g+=`<text x="${C.fx(cx)}" y="${T-12}" fill="#F0524A" font-size="9.5" font-weight="700" text-anchor="middle">${r.holes.length} buc${r.holes.length>1?'hi':'o'}</text>`;
+    g+=`<text x="${C.fx(cx)}" y="${H-B+14}" fill="${C.MUTED}" font-size="10" text-anchor="middle">s${r.w}${r.opp?' · '+esc(TBY.get(r.opp).abbr):''}</text>`;
+  });
+  el.innerHTML=C.svg(W,H,g,'Punti attesi giornata per giornata');
+  const opps=[...new Set(ol.map(r=>r.opp).filter(Boolean))];
+  $('#mt-season-lg').innerHTML=`<span><i style="background:${C.TEAMCOL[MY]}"></i>tu</span>`+opps.map(t=>`<span><i style="background:${C.TEAMCOL[t]}"></i>${esc(TBY.get(t).name)}</span>`).join('')+'<span>il numero sopra è la tua probabilità di vittoria</span>';
+}
+/* mappa di calore: la rosa di oggi (o anche chi ci è passato), giornata per giornata */
+let HEAT_ALL=false;
+document.addEventListener('change',e=>{if(e.target&&e.target.id==='mt-heat-all'){HEAT_ALL=e.target.checked;heatChart()}});
+function heatChart(){
+  const C=window.DWRC,el=$('#mt-heat');if(!el||!C)return;
+  const BW=(TOP.lg||{}).byWeek||{},WKY=TOP.weekly||{};
+  const weeks=Object.keys(BW).map(Number).filter(w=>w<WEEK).sort((a,b)=>a-b);
+  if(!weeks.length){el.innerHTML='';return}
+  const onR={};   // id -> {settimana: riga della formazione}
+  weeks.forEach(w=>((BW[String(w)]||{})[String(MY)]||[]).forEach(r=>{(onR[r.id]=onR[r.id]||{})[w]=r}));
+  mine().forEach(p=>{onR[p.id]=onR[p.id]||{}});
+  if(!HEAT_ALL)Object.keys(onR).forEach(id=>{const p=BYID.get(+id);if(!p||p.own!==MY)delete onR[id]});
+  const ord={QB:0,RB:1,WR:2,TE:3,K:4,DST:5};
+  const rows=Object.keys(onR).map(Number).map(id=>{const p=BYID.get(id);if(!p)return null;
+    const mineW=Object.values(onR[id]).filter(r=>r.act!=null);
+    const st=mineW.filter(r=>r.starter&&r.slot!=='IR'),be=mineW.filter(r=>!r.starter);
+    return{p,now:p.own===MY,avg:st.concat(be).length?mineW.reduce((s,r)=>s+(r.act||0),0)/mineW.length:null,
+      lost:be.reduce((s,r)=>s+(r.act||0),0),tot:st.reduce((s,r)=>s+(r.act||0),0)}}).filter(Boolean)
+    .sort((a,b)=>(b.now-a.now)||(ord[a.p.pos]-ord[b.p.pos])||(b.tot-a.tot));
+  const L=140,RR=96,cw=Math.max(26,Math.min(56,(C.wOf(el,640)-L-RR)/weeks.length)),rh=22,T=22,W=L+cw*weeks.length+RR,H=T+rows.length*rh+6;
+  const ptsOf=(p,w)=>{const r=(WKY[String(p.id)]||[]).find(x=>x[0]===w);return r?r[1]:null};
+  let g='';
+  weeks.forEach((w,i)=>{g+=`<text x="${C.fx(L+cw*i+cw/2)}" y="${T-8}" fill="${C.MUTED}" font-size="9.5" text-anchor="middle">s${w}</text>`});
+  g+=`<text x="${L+cw*weeks.length+8}" y="${T-8}" fill="${C.MUTED}" font-size="9.5">media · panchina</text>`;
+  rows.forEach((x,j)=>{
+    const y=T+j*rh,p=x.p;
+    if(j>0&&rows[j-1].now&&!x.now)g+=`<line x1="0" y1="${y-1}" x2="${W}" y2="${y-1}" stroke="${C.GRID}"/><text x="0" y="${y+12}" fill="${C.MUTED}" font-size="9" font-style="italic"></text>`;
+    g+=`<text x="${L-8}" y="${y+rh/2+4}" fill="${x.now?C.INK:C.MUTED}" font-size="11" text-anchor="end" data-pid="${p.id}">${esc(p.name)}<tspan fill="${C.MUTED}" font-size="9.5"> ${p.pos}</tspan></text>`;
+    weeks.forEach((w,i)=>{
+      const r=onR[p.id][w],v=r?r.act:ptsOf(p,w),bye=p.bye===w,cx=L+cw*i;
+      const a=v==null?0:Math.max(0.08,Math.min(1,v/30));
+      const fill=v==null?'transparent':`rgba(60,199,245,${(r?a:a*0.35).toFixed(2)})`;
+      g+=`<rect x="${C.fx(cx+1)}" y="${y+1}" width="${C.fx(cw-2)}" height="${rh-2}" rx="3" fill="${fill}" stroke="${r&&r.starter&&r.slot!=='IR'?'#E8EDF2':'transparent'}" stroke-width="1.2" data-tip="${C.attr(p.name+' · s'+w)}|${bye?'bye':v==null?'non ha giocato':n1(v)+' punti'}|${r?(r.starter&&r.slot!=='IR'?'titolare ('+r.slot+')':r.slot==='IR'?'in IR':'in panchina'):'non era nella tua rosa'}"/>`;
+      g+=`<text x="${C.fx(cx+cw/2)}" y="${y+rh/2+4}" fill="${v!=null&&a>0.55&&r?'#0B0F14':r?C.INK:C.MUTED}" font-size="9.5" text-anchor="middle" pointer-events="none">${bye?'bye':v==null?'—':n0(v)}</text>`;
+    });
+    g+=`<text x="${L+cw*weeks.length+8}" y="${y+rh/2+4}" fill="${C.INK}" font-size="10.5">${x.avg!=null?n1(x.avg):'—'}<tspan fill="${x.lost>=15?'#F0524A':C.MUTED}"> · ${x.lost?n1(x.lost):'0'}</tspan></text>`;
+  });
+  el.innerHTML=`<div style="overflow-x:auto">${C.svg(W,H,g,'Punti della rosa giornata per giornata').replace('width:100%','width:100%;max-width:'+W+'px;min-width:'+Math.round(W*0.8)+'px')}</div>`;
+}
 /* dumbbell: atteso contro reale, un segmento per giocatore */
 function deltaChart(ros){
   const rows=ros.filter(p=>p.ppg26!=null&&p.exp26).sort((a,b)=>(b.ppg26-b.exp26)-(a.ppg26-a.exp26));
   if(!rows.length){$('#mt-chart').innerHTML='';return}
-  const W=880,L=150,R=56,T=10,rowH=22,H=T+rows.length*rowH+24;
+  const W=window.DWRC?window.DWRC.wOf($('#mt-chart'),560):560,L=124,R=46,T=10,rowH=24,H=T+rows.length*rowH+24;
   const max=Math.max(...rows.flatMap(p=>[p.exp26,p.ppg26]))*1.05;
   const x=v=>L+v/max*(W-L-R);
   let s='';

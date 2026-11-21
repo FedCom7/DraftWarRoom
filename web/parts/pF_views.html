@@ -22,13 +22,23 @@
     <h3>Da qui alla fine: settimana per settimana</h3>
     <p class="cn">La formazione migliore di ogni giornata rimasta, con le proiezioni ESPN finché esistono (poi ritmo 2026 e calendario), contro quella dell'avversario di lega. Le ultime righe sono i playoff: lì l'avversario si decide con il seed. Un buco è uno slot che vale zero: bye, infortunio o reparto vuoto.</p>
     <p class="cn" id="mt-season-note"></p>
+    <div class="chartwrap" id="mt-season-ch"></div>
+    <div class="legend2" id="mt-season-lg" style="margin-bottom:10px"></div>
     <div class="tscroll"><table class="antable" id="mt-season"></table></div>
   </div>
-  <div class="chartcard" style="margin-top:10px">
+  <div class="an-grid" style="margin-top:10px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+  <div class="chartcard">
+    <h3>La tua rosa giornata per giornata</h3>
+    <p class="cn">Ogni casella è una partita: più è piena, più punti ha fatto. Bordo chiaro: era titolare nella tua formazione su ESPN. Casella sbiadita: in quella giornata non era nella tua rosa (punti fatti altrove o da libero); con la spunta compaiono anche i giocatori che hai già tagliato. "bye" e "—": non ha giocato. A destra la media delle partite giocate con te e quanti punti hai lasciato in panchina con lui.</p>
+    <label style="display:inline-flex;gap:6px;align-items:center;font-size:12px;color:var(--k-muted);margin:0 0 6px"><input type="checkbox" id="mt-heat-all"> mostra anche chi è passato dalla rosa</label>
+    <div class="chartwrap" id="mt-heat"></div>
+  </div>
+  <div class="chartcard">
     <h3>Proiezione contro reale</h3>
     <p class="cn">Per ogni tuo giocatore: i punti a gara che ESPN si aspetta da qui alla fine (proiezione sul resto della stagione) e quelli che ha fatto davvero nel 2026. Chi è molto sopra la proiezione sta rendendo più di quanto ESPN creda che possa durare; chi è sotto, ESPN lo vede in ripresa.</p>
     <div class="chartwrap" id="mt-chart"></div>
     <div class="legend2"><span><i style="background:var(--k-muted)"></i>proiezione ESPN a gara</span><span><i style="background:var(--live)"></i>reale sopra</span><span><i style="background:var(--offline)"></i>sotto</span></div>
+  </div>
   </div>
   <div class="chartcard" style="margin-top:10px">
     <h3>Salute della rosa · chi sta rendendo e chi no</h3>
@@ -46,7 +56,9 @@
       <h3>Da cui si può prescindere</h3>
       <p class="cn">I tuoi giocatori con meno valore atteso: sono i posti liberi per un waiver. Un titolare non compare mai qui.</p>
       <div style="overflow-x:auto"><table class="antable" id="mt-drop"></table></div>
-      <h3 style="margin-top:14px">Lettura della squadra</h3>
+    </div>
+    <div class="chartcard">
+      <h3>Lettura della squadra</h3>
       <div class="verdict2" style="border:0;padding:0"><ul id="mt-read"></ul></div>
     </div>
   </div>

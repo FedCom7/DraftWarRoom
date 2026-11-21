@@ -47,17 +47,36 @@
     <p class="cn">Vinte-perse, punti fatti e subiti, ultime cinque (la più recente a destra). Il numero blu è quanti tuoi giocatori ha quella squadra.</p>
     <div class="nfl-div" id="nl-div"></div>
   </div>
+  <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:10px">
+    <div class="chartcard">
+      <h3>Attacco contro difesa</h3>
+      <p class="cn">Punti segnati a partita (verso destra) e punti subiti (verso l'alto si subisce meno). In alto a destra le squadre complete, in basso a sinistra quelle da cui stare lontani. In blu le squadre dove hai giocatori.</p>
+      <div class="chartwrap" id="nl-scatter"></div>
+    </div>
+    <div class="chartcard">
+      <h3>Mappa dei punti concessi</h3>
+      <p class="cn">Ogni casella: quanto concede quella difesa a quel reparto rispetto alla media (stagione 2026). Verde: difesa da attaccare. Rosso: difesa da evitare. Grigio: nella media. Ordinate dalla più generosa in totale.</p>
+      <div class="chartwrap" id="nl-heat"></div>
+    </div>
+  </div>
   <div class="chartcard" style="margin-bottom:10px">
     <h3>Attacchi e difese</h3>
     <p class="cn">Tocca un'intestazione per ordinare. EPA per giocata: quanto ogni azione avvicina al punto (sopra zero è un attacco efficiente). Ritmo: giocate d'attacco a partita, più giocate vuol dire più occasioni per tutti. Il colore segna il terzo migliore e il terzo peggiore della lega.</p>
     <div class="tscroll"><table class="antable" id="nl-off" data-clip="12"></table></div>
   </div>
   <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+    <div>
     <div class="chartcard">
       <h3>Punti fantasy concessi</h3>
       <p class="cn">Punti PPR concessi a partita da ogni difesa, rapportati alla media della lega: 1,00 è la media, sopra è una difesa da attaccare. "Ultime 4" è la stessa cosa sulle ultime quattro giornate: la freccia dice se la difesa sta peggiorando (▲, più punti concessi) o migliorando (▼).</p>
       <div class="an-bar" style="margin:0 0 8px;background:transparent;border:0;padding:0"><div class="chips" id="nl-fpos"></div></div>
       <div class="tscroll"><table class="antable" id="nl-fpa" data-clip="12"></table></div>
+    </div>
+    <div class="chartcard" style="margin-top:10px">
+      <h3>Bye che restano</h3>
+      <p class="cn">Le squadre NFL a riposo in ogni giornata rimasta e quanti giocatori perde ogni squadra della lega.</p>
+      <div class="tscroll"><table class="antable" id="nl-bye"></table></div>
+    </div>
     </div>
     <div class="chartcard">
       <h3>Chi sale e chi scende</h3>
@@ -66,17 +85,12 @@
       <div class="tscroll"><table class="antable" id="nl-radar" data-clip="12"></table></div>
     </div>
   </div>
-  <div class="an-grid" style="margin-top:10px;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr)">
+  <div style="margin-top:10px">
     <div class="chartcard">
       <h3>Bollettino infortuni</h3>
       <p class="cn">Ultimo report medico per i giocatori nelle rose della lega e per i liberi rilevanti. Prima i tuoi, poi quelli degli avversari, poi i liberi.</p>
       <div class="an-bar" style="margin:0 0 8px;background:transparent;border:0;padding:0"><div class="chips" id="nl-iown"></div></div>
       <div class="tscroll"><table class="antable" id="nl-inj" data-clip="15"></table></div>
-    </div>
-    <div class="chartcard">
-      <h3>Bye che restano</h3>
-      <p class="cn">Le squadre NFL a riposo in ogni giornata rimasta e quanti giocatori perde ogni squadra della lega.</p>
-      <div class="tscroll"><table class="antable" id="nl-bye"></table></div>
     </div>
   </div>
 </div>

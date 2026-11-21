@@ -1,0 +1,75 @@
+<div id="view-campionato" class="view" hidden>
+<div class="console">
+  <div class="an-head"><h2 id="ss-title">La stagione</h2><p>La stagione in corso della lega, tutte e quattro le squadre insieme e solo le giornate concluse: risultati, punti fatti e subiti, medie per ruolo, volume dei giocatori (target, ricezioni, corse, yard, touchdown) di titolari e panchina, da dove arrivano i punti e le prestazioni migliori. Formazioni e punti da ESPN, statistiche di gioco unite ESPN → Sleeper → nflverse.</p></div>
+  <div class="an-bar">
+    <span style="font-size:12px;color:var(--k-muted)">Giocatori</span><div class="chips" id="ss-grp"></div>
+    <span style="font-size:12px;color:var(--k-muted)">Giornate</span><div class="chips" id="ss-win"></div>
+    <span class="sp" id="ss-info"></span>
+  </div>
+  <div class="strip" id="ss-kpi"></div>
+
+  <div class="chartcard" style="margin-bottom:10px">
+    <h3>Andamento della stagione</h3>
+    <p class="cn" id="ss-trend-cn"></p>
+    <div class="an-bar" style="margin:0 0 8px;background:transparent;border:0;padding:0"><div class="chips" id="ss-mode"></div></div>
+    <div class="chartwrap" id="ss-trend"></div>
+    <div class="legend2" id="ss-trend-lg"></div>
+  </div>
+
+    <div class="chartcard" style="margin-bottom:10px">
+      <h3>Giornata per giornata</h3>
+      <p class="cn">Il punteggio di ogni squadra in ogni giornata, colorato per posizione in quella giornata (verde pieno: il più alto, rosso pieno: il più basso). V e S: vinta o persa.</p>
+      <div class="tscroll"><table class="antable" id="ss-grid"></table></div>
+    </div>
+    <div class="chartcard" style="margin-bottom:10px">
+      <h3>Punti fatti e subiti</h3>
+      <p class="cn">Oscillazione: scarto tipico fra una giornata e l'altra. Tutti contro tutti: il record se ogni giornata avessi giocato contro tutte e tre le altre, cioè la forza al netto del calendario.</p>
+      <div class="tscroll"><table class="antable" id="ss-pf"></table></div>
+    </div>
+
+  <div class="an-grid" style="grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);margin-bottom:10px">
+    <div class="chartcard">
+      <h3>Media punti per ruolo</h3>
+      <p class="cn" id="ss-pos-cn"></p>
+      <div class="chartwrap" id="ss-pos"></div>
+      <div class="legend2" id="ss-pos-lg"></div>
+    </div>
+    <div class="chartcard">
+      <h3>Da dove arrivano i punti</h3>
+      <p class="cn">Quota dei punti per ruolo del giocatore (un RB schierato come FLEX conta come RB).</p>
+      <div class="chartwrap" id="ss-share"></div>
+      <div class="legend2" id="ss-share-lg"></div>
+    </div>
+  </div>
+  <div class="chartcard" style="margin-bottom:10px">
+    <h3>Punti per ruolo, in numeri</h3>
+    <p class="cn">Punti a giornata del reparto e, sotto, la media per singolo giocatore per partita. In verde il migliore della lega in quel ruolo.</p>
+    <div class="tscroll"><table class="antable" id="ss-pos-t"></table></div>
+  </div>
+  <div class="chartcard" style="margin-bottom:10px">
+    <h3>Titolari e panchina</h3>
+    <p class="cn">Formazione ideale: la migliore che si poteva schierare a posteriori con i punti veri di quella giornata. Punti persi: la differenza con quella schierata. Titolari sbagliati: quanti titolari non sarebbero entrati nella formazione ideale.</p>
+    <div class="tscroll"><table class="antable" id="ss-bench"></table></div>
+  </div>
+
+  <div class="chartcard" style="margin-bottom:10px">
+    <h3>Volume di gioco</h3>
+    <p class="cn">Le statistiche dei giocatori schierati (o in panchina) da ogni squadra, sommate. % presa: ricezioni sui target. RZ: target e corse dentro le 20 yard avversarie.</p>
+    <div class="an-bar" style="margin:0 0 8px;background:transparent;border:0;padding:0"><div class="chips" id="ss-per"></div><div class="chips" id="ss-cg"></div></div>
+    <div class="tscroll"><table class="antable" id="ss-vol"></table></div>
+  </div>
+
+  <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
+    <div class="chartcard">
+      <h3>Le prestazioni migliori</h3>
+      <p class="cn">Le singole partite con più punti, fra i giocatori del gruppo scelto.</p>
+      <div class="tscroll"><table class="antable" id="ss-top" data-clip="10"></table></div>
+    </div>
+    <div class="chartcard">
+      <h3>Chi ha portato i punti a ogni squadra</h3>
+      <p class="cn">I tre giocatori con più punti per squadra nel gruppo scelto, con le partite giocate per lei e la media.</p>
+      <div class="tscroll"><table class="antable" id="ss-mvp"></table></div>
+    </div>
+  </div>
+</div>
+</div>

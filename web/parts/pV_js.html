@@ -1,0 +1,237 @@
+<script>
+(()=>{
+'use strict';
+/* ================= LA STAGIONE: tutta la lega, giornate concluse =================
+   Fonti: lg.byWeek (formazioni e punti ESPN per giornata), lg.games (risultati),
+   weekly (statistiche di gioco unite ESPN → Sleeper → nflverse) */
+const D=window.DWR,A=window.DWR2,M=window.DWR3,C=window.DWRC;
+const {TBY,MY,esc}=D;const {POSC,n0,n1,R,chips}=A;
+const $=(s,r=document)=>r.querySelector(s);
+const TOP=window.TOPINA;
+const IDS=[1,2,3,4];
+const POSS=['QB','RB','WR','TE','K','DST'];
+const SS={grp:'st',win:'all',mode:'pf',per:'g',cg:'sum'};
+const nm=t=>esc((TBY.get(t)||{}).name||t), ab=t=>esc((TBY.get(t)||{}).abbr||t);
+const col=t=>C.TEAMCOL[t];
+
+/* --- dati di base --- */
+function base(){
+  const LG=TOP.lg||{},WEEK=TOP.week||1;
+  const games=(LG.games||[]).filter(g=>g.w<WEEK&&(g.hp||g.ap));
+  let weeks=[...new Set(games.map(g=>g.w))].sort((a,b)=>a-b);
+  if(SS.win!=='all')weeks=weeks.slice(-(+SS.win));
+  const WS=new Set(weeks);
+  const pOf=new Map(M.POOL.map(p=>[p.id,p]));
+  const WKY=TOP.weekly||{};
+  const statOf=(id,w)=>(WKY[String(id)]||[]).find(r=>r[0]===w)||null;
+  const rows=[];   // una riga per giocatore per squadra per giornata
+  weeks.forEach(w=>IDS.forEach(t=>((LG.byWeek||{})[String(w)]||{})[String(t)]&&LG.byWeek[String(w)][String(t)].forEach(r=>{
+    const p=pOf.get(r.id),s=statOf(r.id,w);
+    const grp=r.slot==='IR'?'ir':r.starter?'st':'be';
+    rows.push({w,t,id:r.id,p,pos:p?p.pos:(r.slot==='D/ST'?'DST':r.slot),slot:r.slot,grp,
+      pts:r.act!=null?r.act:(s?s[1]:0)||0,s})})));
+  const G=games.filter(g=>WS.has(g.w));
+  return{weeks,games:G,rows,WEEK};
+}
+const inGrp=r=>SS.grp==='all'?r.grp!=='ir':r.grp===SS.grp;
+const scoreOf=(G,t,w)=>{const g=G.find(x=>x.w===w&&(x.h===t||x.a===t));if(!g)return null;const me=g.h===t;return{pf:me?g.hp:g.ap,pa:me?g.ap:g.hp,opp:me?g.a:g.h}};
+const mean=a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:0;
+const sd=a=>{if(a.length<2)return 0;const m=mean(a);return Math.sqrt(a.reduce((s,v)=>s+(v-m)**2,0)/(a.length-1))};
+const med=a=>{if(!a.length)return 0;const s=[...a].sort((x,y)=>x-y),i=(s.length-1)/2;return(s[Math.floor(i)]+s[Math.ceil(i)])/2};
+
+function render(){
+  const B=base(),{weeks,games,rows}=B;
+  const grpL={st:'titolari',be:'panchina',all:'titolari e panchina'}[SS.grp];
+  chips($('#ss-grp'),['st','be','all'],SS.grp,c=>{SS.grp=c;render()});
+  $('#ss-grp').querySelectorAll('button').forEach(b=>b.textContent={st:'Titolari',be:'Panchina',all:'Tutti'}[b.dataset.c]);
+  chips($('#ss-win'),['all','5','3'],SS.win,c=>{SS.win=c;render()});
+  $('#ss-win').querySelectorAll('button').forEach(b=>b.textContent={all:'Tutta la stagione','5':'Ultime 5','3':'Ultime 3'}[b.dataset.c]);
+  $('#ss-title').textContent=`La stagione ${TOP.season}`;
+  $('#ss-info').textContent=weeks.length?`giornate ${weeks[0]}–${weeks[weeks.length-1]} · ${rows.filter(r=>r.grp!=='ir').length} presenze in rosa analizzate`:'nessuna giornata conclusa';
+  if(!weeks.length)return;
+
+  /* ---- punteggi di squadra ---- */
+  const S={};IDS.forEach(t=>{const sc=weeks.map(w=>({w,...(scoreOf(games,t,w)||{})})).filter(x=>x.pf!=null);
+    const pf=sc.map(x=>x.pf),pa=sc.map(x=>x.pa);
+    let apW=0,apL=0;sc.forEach(x=>IDS.filter(o=>o!==t).forEach(o=>{const y=scoreOf(games,o,x.w);if(y){x.pf>y.pf?apW++:apL++}}));
+    S[t]={sc,pf,pa,w:sc.filter(x=>x.pf>x.pa).length,l:sc.filter(x=>x.pf<x.pa).length,apW,apL}});
+  const lgAvg=weeks.map(w=>mean(IDS.map(t=>(scoreOf(games,t,w)||{}).pf).filter(v=>v!=null)));
+  const lgMean=mean(lgAvg);
+
+  /* KPI */
+  $('#ss-kpi').innerHTML=IDS.slice().sort((a,b)=>(S[b].w-S[a].w)||(mean(S[b].pf)-mean(S[a].pf))).map(t=>{const s=S[t],best=Math.max(...s.pf),worst=Math.min(...s.pf);
+    return`<div class="sc" style="border-top-color:${col(t)}"><h4>${nm(t)}${t===MY?' · tu':''}</h4>
+      <div class="kv"><span>record</span><b>${s.w}-${s.l}</b></div>
+      <div class="kv"><span>fatti · subiti a giornata</span><b>${n1(mean(s.pf))} · ${n1(mean(s.pa))}</b></div>
+      <div class="kv"><span>migliore · peggiore</span><b>${n1(best)} · ${n1(worst)}</b></div>
+      <div class="verd">${mean(s.pf)>=lgMean?`${n1(mean(s.pf)-lgMean)} sopra la media della lega`:`${n1(lgMean-mean(s.pf))} sotto la media della lega`}.</div></div>`}).join('');
+
+  trendChart(S,weeks,lgAvg);
+  gridTable(S,weeks,games);
+  pfTable(S,weeks,lgAvg);
+  posSection(rows,weeks,grpL);
+  shareChart(rows,grpL);
+  benchTable(rows,weeks);
+  volTable(rows,weeks);
+  topTables(rows);
+}
+
+/* ---- andamento ---- */
+function trendChart(S,weeks,lgAvg){
+  const MODES={pf:'Punti fatti',pa:'Punti subiti',cum:'Punti cumulati',avg3:'Media mobile 3',rank:'Posizione in classifica'};
+  $('#ss-mode').innerHTML=Object.entries(MODES).map(([k,l])=>`<button data-c="${k}" class="${SS.mode===k?'on':''}">${l}</button>`).join('');
+  $('#ss-mode').onclick=e=>{const b=e.target.closest('button');if(b){SS.mode=b.dataset.c;render()}};
+  $('#ss-trend-cn').textContent={pf:'Punti dei titolari giornata per giornata. Tratteggio: media della lega. Pallino pieno: partita vinta, vuoto: persa.',
+    pa:'Punti segnati dagli avversari che ti sono capitati: dice quanto è stato duro il calendario. Tratteggio: media della lega.',
+    cum:'Punti fatti sommati giornata dopo giornata: la pendenza è la forza, i distacchi si leggono a destra.',
+    avg3:'Media delle ultime tre giornate: toglie il rumore e mostra chi sta salendo e chi sta calando.',
+    rank:'Posizione in classifica dopo ogni giornata (vittorie, poi punti fatti): 1 in alto.'}[SS.mode];
+  const val={};IDS.forEach(t=>{const s=S[t].sc;let acc=0,wins=0;
+    val[t]=s.map((x,i)=>{acc+=x.pf;return{w:x.w,win:x.pf>x.pa,v:SS.mode==='pf'?x.pf:SS.mode==='pa'?x.pa:SS.mode==='cum'?acc:SS.mode==='avg3'?mean(s.slice(Math.max(0,i-2),i+1).map(y=>y.pf)):null,x}})});
+  if(SS.mode==='rank'){weeks.forEach((w,i)=>{const st=IDS.map(t=>{const upto=S[t].sc.filter(x=>x.w<=w);return{t,w:upto.filter(x=>x.pf>x.pa).length,pf:upto.reduce((a,x)=>a+x.pf,0)}}).sort((a,b)=>(b.w-a.w)||(b.pf-a.pf));
+    st.forEach((o,k)=>{const e=val[o.t].find(v=>v.w===w);if(e)e.v=k+1})})}
+  const all=IDS.flatMap(t=>val[t].map(v=>v.v)).concat(SS.mode==='pf'||SS.mode==='pa'?lgAvg:[]);
+  const rank=SS.mode==='rank';
+  const lo=rank?0.5:SS.mode==='cum'?0:Math.floor(Math.min(...all)/10)*10-5,hi=rank?4.5:Math.ceil(Math.max(...all)/10)*10+5;
+  const W=C.wOf($('#ss-trend'),880),H=240,L=44,Rr=128,T=14,Bb=28;
+  const X=w=>L+(weeks.indexOf(w))/(Math.max(1,weeks.length-1))*(W-L-Rr),Y=v=>rank?T+(v-lo)/(hi-lo)*(H-Bb-T):H-Bb-(v-lo)/(hi-lo)*(H-Bb-T);
+  let g=rank?[1,2,3,4].map(v=>`<line x1="${L}" y1="${C.fx(Y(v))}" x2="${W-Rr}" y2="${C.fx(Y(v))}" stroke="${C.GRID}"/><text x="${L-8}" y="${C.fx(Y(v)+3)}" fill="${C.MUTED}" font-size="9.5" text-anchor="end">${v}°</text>`).join(''):C.yGrid(L,Rr,W,Y,C.niceTicks(lo,hi,5));
+  weeks.forEach(w=>{g+=`<text x="${C.fx(X(w))}" y="${H-Bb+14}" fill="${C.MUTED}" font-size="9.5" text-anchor="middle">s${w}</text>`});
+  if(SS.mode==='pf'||SS.mode==='pa')g+=`<path d="${weeks.map((w,i)=>`${i?'L':'M'}${C.fx(X(w))} ${C.fx(Y(lgAvg[i]))}`).join(' ')}" fill="none" stroke="${C.MUTED}" stroke-width="1.5" stroke-dasharray="4 4"/>`;
+  const labels=[];
+  IDS.forEach(t=>{const v=val[t],c=col(t),me=t===MY;
+    g+=`<path d="${v.map((e,i)=>`${i?'L':'M'}${C.fx(X(e.w))} ${C.fx(Y(e.v))}`).join(' ')}" fill="none" stroke="${c}" stroke-width="${me?2.6:2}" stroke-linejoin="round"/>`;
+    v.forEach(e=>{const x=e.x;g+=`<circle cx="${C.fx(X(e.w))}" cy="${C.fx(Y(e.v))}" r="4.2" fill="${SS.mode==='pf'||SS.mode==='pa'?(e.win?c:C.SURF):c}" stroke="${SS.mode==='pf'||SS.mode==='pa'?c:C.SURF}" stroke-width="2"/>`;
+      g+=`<circle cx="${C.fx(X(e.w))}" cy="${C.fx(Y(e.v))}" r="11" fill="transparent" data-tip="${C.attr(TBY.get(t).name+' · settimana '+e.w)}|${rank?e.v+'° in classifica':n1(e.v)+' '+(SS.mode==='pa'?'subiti':SS.mode==='cum'?'in totale':SS.mode==='avg3'?'media ultime 3':'punti')}|${x.pf>x.pa?'vinta':'persa'} ${n1(x.pf)}–${n1(x.pa)} contro ${C.attr(TBY.get(x.opp).name)}"/>`});
+    const last=v[v.length-1];labels.push({t,y:Y(last.v),txt:`${TBY.get(t).name} ${rank?last.v+'°':n1(last.v)}`});
+  });
+  labels.sort((a,b)=>a.y-b.y);for(let i=1;i<labels.length;i++)if(labels[i].y-labels[i-1].y<13)labels[i].y=labels[i-1].y+13;
+  labels.forEach(l=>{g+=`<text x="${W-Rr+10}" y="${C.fx(l.y+4)}" fill="${C.INK}" font-size="10.5" font-weight="${l.t===MY?700:500}">${esc(l.txt)}</text>`});
+  $('#ss-trend').innerHTML=C.svg(W,H,g,'Andamento della stagione');
+  $('#ss-trend-lg').innerHTML=IDS.map(t=>`<span><i style="background:${col(t)}"></i>${nm(t)}</span>`).join('')+(SS.mode==='pf'||SS.mode==='pa'?'<span>tratteggio: media della lega · pieno: vinta · vuoto: persa</span>':'');
+}
+
+/* ---- giornata per giornata ---- */
+function gridTable(S,weeks,games){
+  const RK=['rgba(47,210,122,.55)','rgba(47,210,122,.2)','rgba(240,82,74,.2)','rgba(240,82,74,.5)'];
+  const rankOf=(t,w)=>{const v=IDS.map(o=>({o,v:(scoreOf(games,o,w)||{}).pf})).filter(x=>x.v!=null).sort((a,b)=>b.v-a.v);return v.findIndex(x=>x.o===t)};
+  $('#ss-grid').innerHTML=`<thead><tr><th>Squadra</th>${weeks.map(w=>`<th class="num">s${w}</th>`).join('')}<th class="num">Media</th></tr></thead><tbody>`+
+    IDS.map(t=>`<tr class="${t===MY?'mine':''}"><td><b>${nm(t)}</b></td>${weeks.map(w=>{const x=scoreOf(games,t,w);if(!x)return'<td class="num">—</td>';const r=rankOf(t,w);
+      return`<td class="num" style="background:${RK[r]};white-space:nowrap" title="${r+1}° della giornata · contro ${TBY.get(x.opp).name} ${n1(x.pa)}">${n0(x.pf)} <small style="color:${x.pf>x.pa?'var(--live)':'var(--offline)'};font-weight:700">${x.pf>x.pa?'V':'S'}</small></td>`}).join('')}
+      <td class="num"><b>${n1(mean(S[t].pf))}</b></td></tr>`).join('')+'</tbody>';
+}
+
+/* ---- punti fatti e subiti ---- */
+function pfTable(S,weeks,lgAvg){
+  $('#ss-pf').innerHTML=`<thead><tr><th>Squadra</th><th class="num">V-S</th><th class="num">Fatti</th><th class="num">Subiti</th><th class="num">Diff</th><th class="num">Media</th><th class="num">Mediana</th><th class="num">Oscillaz.</th><th class="num">Max</th><th class="num">Min</th><th class="num">Sopra media lega</th><th class="num">Subiti/g</th><th class="num">Tutti c. tutti</th></tr></thead><tbody>`+
+    IDS.slice().sort((a,b)=>(S[b].w-S[a].w)||(mean(S[b].pf)-mean(S[a].pf))).map(t=>{const s=S[t],pf=s.pf.reduce((a,b)=>a+b,0),pa=s.pa.reduce((a,b)=>a+b,0),
+      above=s.sc.filter(x=>x.pf>lgAvg[weeks.indexOf(x.w)]).length;
+      return`<tr class="${t===MY?'mine':''}"><td><b>${nm(t)}</b></td><td class="num">${s.w}-${s.l}</td><td class="num">${n0(pf)}</td><td class="num" style="color:var(--k-muted)">${n0(pa)}</td>
+        <td class="num" style="color:${pf-pa>=0?'var(--live)':'var(--offline)'}">${pf-pa>0?'+':''}${n0(pf-pa)}</td><td class="num"><b>${n1(mean(s.pf))}</b></td><td class="num">${n1(med(s.pf))}</td>
+        <td class="num">±${n1(sd(s.pf))}</td><td class="num">${n1(Math.max(...s.pf))}</td><td class="num">${n1(Math.min(...s.pf))}</td><td class="num">${above} su ${s.sc.length}</td>
+        <td class="num" style="color:var(--k-muted)">${n1(mean(s.pa))}</td><td class="num">${s.apW}-${s.apL}</td></tr>`}).join('')+'</tbody>';
+}
+
+/* ---- media punti per ruolo ---- */
+function posSection(rows,weeks,grpL){
+  const R2=rows.filter(inGrp);
+  const v={};IDS.forEach(t=>{v[t]={};POSS.forEach(p=>{const rr=R2.filter(r=>r.t===t&&r.pos===p);
+    v[t][p]={tot:rr.reduce((s,r)=>s+r.pts,0)/Math.max(1,weeks.length),per:rr.length?mean(rr.map(r=>r.pts)):null,n:rr.length}})});
+  $('#ss-pos-cn').textContent=`Punti a giornata portati da ogni ruolo (${grpL}), squadra per squadra: la barra è il totale del reparto in una giornata, la tabella sotto aggiunge la media per singolo giocatore.`;
+  const max=Math.max(...IDS.flatMap(t=>POSS.map(p=>v[t][p].tot)))*1.1||1;
+  const W=C.wOf($('#ss-pos'),600),H=210,L=36,Rr=10,T=12,Bb=28,gw=(W-L-Rr)/POSS.length,bw=Math.min(18,(gw-12)/4);
+  const Y=x=>H-Bb-x/max*(H-Bb-T);
+  let g=C.yGrid(L,Rr,W,Y,C.niceTicks(0,max,4));
+  POSS.forEach((p,i)=>{const x0=L+gw*i+(gw-bw*4-6)/2;
+    g+=`<text x="${C.fx(L+gw*i+gw/2)}" y="${H-Bb+15}" fill="${C.INK}" font-size="10.5" font-weight="600" text-anchor="middle">${p==='DST'?'D/ST':p}</text>`;
+    IDS.forEach((t,k)=>{const o=v[t][p],x=x0+k*(bw+2);
+      g+=`<rect x="${C.fx(x)}" y="${C.fx(Y(o.tot))}" width="${C.fx(bw)}" height="${C.fx(Math.max(0,H-Bb-Y(o.tot)))}" rx="3" fill="${col(t)}" data-tip="${C.attr(TBY.get(t).name+' · '+p)}|${n1(o.tot)} punti a giornata dal reparto|${o.per!=null?n1(o.per)+' a giocatore per partita':'nessuno'} · ${o.n} presenze"/>`})});
+  $('#ss-pos').innerHTML=C.svg(W,H,g,'Media punti per ruolo');
+  $('#ss-pos-lg').innerHTML=IDS.map(t=>`<span><i style="background:${col(t)}"></i>${nm(t)}</span>`).join('');
+  const best=p=>Math.max(...IDS.map(t=>v[t][p].tot));
+  $('#ss-pos-t').innerHTML=`<thead><tr><th>Squadra</th>${POSS.map(p=>`<th class="num">${p==='DST'?'D/ST':p}</th>`).join('')}<th class="num">Totale</th></tr></thead><tbody>`+
+    IDS.map(t=>`<tr class="${t===MY?'mine':''}"><td><b>${nm(t)}</b></td>${POSS.map(p=>{const o=v[t][p];return`<td class="num"${o.tot>0&&o.tot===best(p)?' style="color:var(--live);font-weight:700"':''}>${n1(o.tot)}<br><small style="color:var(--k-muted);font-weight:400">${o.per!=null?n1(o.per)+'/gioc.':'—'}</small></td>`}).join('')}
+      <td class="num"><b>${n1(POSS.reduce((s,p)=>s+v[t][p].tot,0))}</b></td></tr>`).join('')+'</tbody>';
+}
+
+/* ---- quota dei punti per ruolo: barre impilate al 100% ---- */
+function shareChart(rows,grpL){
+  const R2=rows.filter(inGrp);
+  const W=C.wOf($('#ss-share'),520),L=120,Rr=10,T=6,rh=48,H=T+IDS.length*rh+4;
+  let g='';
+  IDS.forEach((t,i)=>{const y=T+i*rh,tot=R2.filter(r=>r.t===t).reduce((s,r)=>s+r.pts,0)||1;let acc=0;
+    g+=`<text x="${L-10}" y="${y+rh/2+4}" fill="${C.INK}" font-size="11" font-weight="${t===MY?700:500}" text-anchor="end">${nm(t)}</text>`;
+    POSS.forEach(p=>{const v=R2.filter(r=>r.t===t&&r.pos===p).reduce((s,r)=>s+r.pts,0),f=v/tot,x=L+acc*(W-L-Rr),w=f*(W-L-Rr);
+      if(w>0)g+=`<rect x="${C.fx(x+1)}" y="${y+6}" width="${C.fx(Math.max(0,w-2))}" height="${rh-12}" rx="3" fill="${POSC[p]||'#9AA8BA'}" data-tip="${C.attr(TBY.get(t).name+' · '+p)}|${Math.round(f*100)}% dei punti (${grpL})|${n1(v)} punti"/>`;
+      if(w>34)g+=`<text x="${C.fx(x+w/2)}" y="${y+rh/2+4}" fill="#0B0F14" font-size="10" font-weight="700" text-anchor="middle" pointer-events="none">${Math.round(f*100)}%</text>`;
+      acc+=f});
+  });
+  $('#ss-share').innerHTML=C.svg(W,H,g,'Quota dei punti per ruolo');
+  $('#ss-share-lg').innerHTML=POSS.map(p=>`<span><i style="background:${POSC[p]}"></i>${p==='DST'?'D/ST':p}</span>`).join('');
+}
+
+/* ---- titolari e panchina: formazione ideale a posteriori ---- */
+const SLOTDEF=[['QB',['QB']],['RB',['RB']],['RB',['RB']],['WR',['WR']],['WR',['WR']],['TE',['TE']],['D/ST',['DST']],['K',['K']],['RB/WR',['RB','WR']]];
+function ideal(list){   // prima i posti di un solo ruolo, per ultimo il FLEX: con questa struttura è l'ottimo
+  const used=new Set();let tot=0;const sorted=[...list].sort((a,b)=>b.pts-a.pts);
+  SLOTDEF.forEach(([,el])=>{const p=sorted.find(r=>!used.has(r)&&el.includes(r.pos));if(p){used.add(p);tot+=p.pts}});
+  return{tot,used};
+}
+function benchTable(rows,weeks){
+  const out={};IDS.forEach(t=>{let lost=0,wrong=0,flip=0;
+    weeks.forEach(w=>{const wk=rows.filter(r=>r.t===t&&r.w===w&&r.grp!=='ir');const st=wk.filter(r=>r.grp==='st');
+      const opt=ideal(wk),act=st.reduce((s,r)=>s+r.pts,0);lost+=opt.tot-act;wrong+=st.filter(r=>!opt.used.has(r)).length;
+      const g=(TOP.lg.games||[]).find(x=>x.w===w&&(x.h===t||x.a===t));
+      if(g){const pa=g.h===t?g.ap:g.hp;if(act<pa&&opt.tot>pa)flip++}});
+    const be=rows.filter(r=>r.t===t&&r.grp==='be'),st=rows.filter(r=>r.t===t&&r.grp==='st');
+    const bestB=be.reduce((a,r)=>r.pts>(a?a.pts:-1)?r:a,null);
+    out[t]={st:st.reduce((s,r)=>s+r.pts,0)/Math.max(1,weeks.length),be:be.reduce((s,r)=>s+r.pts,0)/Math.max(1,weeks.length),lost,wrong,flip,bestB}});
+  $('#ss-bench').innerHTML=`<thead><tr><th>Squadra</th><th class="num">Titolari/g</th><th class="num">Panchina/g</th><th class="num">Punti persi</th><th class="num">Persi/g</th><th class="num">Titolari sbagliati</th><th class="num">Sconfitte evitabili</th><th>Miglior panchinaro</th></tr></thead><tbody>`+
+    IDS.map(t=>{const o=out[t],b=o.bestB;return`<tr class="${t===MY?'mine':''}"><td><b>${nm(t)}</b></td><td class="num"><b>${n1(o.st)}</b></td><td class="num">${n1(o.be)}</td>
+      <td class="num">${n1(o.lost)}</td><td class="num" style="color:${o.lost/weeks.length>=20?'var(--offline)':'var(--k-ink)'}">${n1(o.lost/weeks.length)}</td><td class="num">${o.wrong}</td>
+      <td class="num" style="color:${o.flip?'var(--offline)':'var(--k-muted)'}" title="giornate perse in cui la formazione ideale avrebbe vinto">${o.flip}</td>
+      <td style="white-space:nowrap">${b&&b.p?`<span class="pos pos-${b.p.pos}">${b.p.pos}</span> <span data-pid="${b.id}">${esc(b.p.name)}</span> <small style="color:var(--k-muted)">${n1(b.pts)} in s${b.w}</small>`:'—'}</td></tr>`}).join('')+'</tbody>';
+}
+
+/* ---- volume di gioco ---- */
+function volTable(rows,weeks){
+  chips($('#ss-per'),['g','tot'],SS.per,c=>{SS.per=c;render()});
+  $('#ss-per').querySelectorAll('button').forEach(b=>b.textContent={g:'Per giornata',tot:'Totale'}[b.dataset.c]);
+  const CG={sum:['Riepilogo',['tgt','rec','car','rushYds','recYds','td','pts']],rec:['Ricezioni',['tgt','rec','cr','recYds','recTd','rzT']],
+    rush:['Corse',['car','rushYds','ypc','rushTd','rzC']],pass:['Passaggi',['passYds','passTd','int']],all:['Tutte',null]};
+  $('#ss-cg').innerHTML=Object.entries(CG).map(([c,v])=>`<button data-c="${c}" class="${(SS.cg||'sum')===c?'on':''}">${v[0]}</button>`).join('');
+  $('#ss-cg').onclick=e=>{const b=e.target.closest('button');if(b){SS.cg=b.dataset.c;render()}};
+  const R2=rows.filter(inGrp),k=SS.per==='g'?1/Math.max(1,weeks.length):1;
+  const F=[['tgt','Target',3],['rec','Ricezioni',4],['cr','% presa',null],['recYds','Yard ric.',5],['recTd','TD ric.',6],['car','Corse',7],['rushYds','Yard corsa',8],['ypc','Yard/corsa',null],['rushTd','TD corsa',9],
+    ['passYds','Yard pass.',10],['passTd','TD pass.',11],['int','Intercetti',12],['rzT','Target RZ',15],['rzC','Corse RZ',16],['td','TD totali',null],['pts','Punti',null]];
+  const agg={};IDS.forEach(t=>{const a={};F.forEach(([key,,i])=>{if(i!=null)a[key]=R2.filter(r=>r.t===t&&r.s).reduce((s,r)=>s+(+r.s[i]||0),0)});
+    a.cr=a.tgt?a.rec/a.tgt*100:null;a.ypc=a.car?a.rushYds/a.car:null;a.td=a.recTd+a.rushTd+a.passTd;a.pts=R2.filter(r=>r.t===t).reduce((s,r)=>s+r.pts,0);agg[t]=a});
+  const VG=CG[SS.cg||'sum'][1];const FV=VG?F.filter(f=>VG.includes(f[0])):F;
+  const best=key=>Math.max(...IDS.map(t=>agg[t][key]??-1e9));
+  const fmt=(key,v)=>v==null?'—':key==='cr'?n0(v)+'%':key==='ypc'?n1(v):key==='int'||key==='td'||key.endsWith('Td')?(SS.per==='g'?n1(v*k):n0(v)):SS.per==='g'?n1(v*k):n0(v);
+  $('#ss-vol').innerHTML=`<thead><tr><th>Squadra</th>${FV.map(([,l])=>`<th class="num">${l}</th>`).join('')}</tr></thead><tbody>`+
+    IDS.map(t=>`<tr class="${t===MY?'mine':''}"><td><b>${nm(t)}</b></td>${FV.map(([key])=>{const v=agg[t][key];
+      return`<td class="num"${v!=null&&v===best(key)&&key!=='int'?' style="color:var(--live);font-weight:700"':''}>${key==='cr'||key==='ypc'?fmt(key,v):fmt(key,v)}</td>`}).join('')}</tr>`).join('')+'</tbody>';
+}
+
+/* ---- prestazioni ---- */
+function topTables(rows){
+  const R2=rows.filter(inGrp).filter(r=>r.p);
+  const top=[...R2].sort((a,b)=>b.pts-a.pts).slice(0,30);
+  const line=r=>{const s=r.s;if(!s)return'';const out=[];
+    if(s[10])out.push(`${n0(s[10])} yd pass, ${s[11]||0} TD`);if(s[7])out.push(`${n0(s[7])} corse ${n0(s[8]||0)} yd${s[9]?', '+s[9]+' TD':''}`);
+    if(s[3])out.push(`${s[4]||0}/${s[3]} ric. ${n0(s[5]||0)} yd${s[6]?', '+s[6]+' TD':''}`);return out.join(' · ')};
+  $('#ss-top').innerHTML=`<thead><tr><th>Giocatore</th><th>Squadra</th><th class="num">Sett.</th><th class="num">Punti</th><th>Partita</th></tr></thead><tbody>`+
+    top.map(r=>`<tr class="${r.t===MY?'mine':''}"><td style="white-space:nowrap"><span class="pos pos-${r.p.pos}">${r.p.pos}</span> <b data-pid="${r.id}">${esc(r.p.name)}</b>${r.grp==='be'?' <span class="tag2">panchina</span>':''}</td>
+      <td><span class="tag2" style="color:${col(r.t)}">${ab(r.t)}</span></td><td class="num">${r.w}</td><td class="num"><b>${n1(r.pts)}</b></td><td style="color:var(--k-muted);white-space:normal;min-width:180px">${line(r)}${r.s&&r.s[2]?` <small>(${esc(r.s[2])})</small>`:''}</td></tr>`).join('')+'</tbody>';
+  $('#ss-mvp').innerHTML=`<thead><tr><th>Squadra</th><th>Giocatore</th><th class="num">Partite</th><th class="num">Punti</th><th class="num">Media</th></tr></thead><tbody>`+
+    IDS.map(t=>{const by={};R2.filter(r=>r.t===t).forEach(r=>{const o=by[r.id]=by[r.id]||{p:r.p,id:r.id,n:0,pts:0};o.n++;o.pts+=r.pts});
+      const l=Object.values(by).sort((a,b)=>b.pts-a.pts).slice(0,3);
+      return l.map((o,i)=>`<tr class="${t===MY?'mine':''}"><td>${i===0?`<b>${nm(t)}</b>`:''}</td><td style="white-space:nowrap"><span class="pos pos-${o.p.pos}">${o.p.pos}</span> <span data-pid="${o.id}">${esc(o.p.name)}</span></td>
+        <td class="num">${o.n}</td><td class="num"><b>${n1(o.pts)}</b></td><td class="num">${n1(o.pts/o.n)}</td></tr>`).join('')}).join('')+'</tbody>';
+}
+
+R.campionato=render;
+if((location.hash||'').slice(1)==='campionato')window.DWR_VIEW('campionato');
+})();
+</script>

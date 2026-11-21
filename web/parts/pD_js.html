@@ -302,7 +302,32 @@ function sosColor(v){
   const d=Math.max(-0.35,Math.min(0.35,v-1))/0.35;
   return d>=0?`rgba(47,210,122,${0.25+d*0.55})`:`rgba(240,82,74,${0.25+(-d)*0.55})`;
 }
+function mySchedule(){
+  const C=window.DWRC,el=$('#sd-mine'),M3=window.DWR3;if(!el||!C)return;
+  if(!M3){setTimeout(mySchedule,60);return}       // aperta dal link diretto: la rosa si carica subito dopo
+  const W0=TOP.week||1,LAST=Math.max(RULES.regWeeks||15,...PO_WEEKS),weeks=[];for(let w=W0;w<=LAST;w++)weeks.push(w);
+  const ord={QB:0,RB:1,WR:2,TE:3};
+  const ros=M3.POOL.filter(p=>p.own===MY&&ord[p.pos]!=null).sort((a,b)=>(ord[a.pos]-ord[b.pos])||(M3.restPPG(b)-M3.restPPG(a)));
+  const L=170,cw=Math.max(44,Math.min(110,(C.wOf(el,900)-L-10)/weeks.length)),T=24,rh=24,W=L+cw*weeks.length+8,H=T+ros.length*rh+4;
+  const col=v=>{if(v==null)return'transparent';const d=Math.max(-1,Math.min(1,(v-1)/0.25));
+    return d>=0?`rgba(47,210,122,${(0.12+d*0.65).toFixed(2)})`:`rgba(240,82,74,${(0.12-d*0.65).toFixed(2)})`};
+  let g='';
+  weeks.forEach((w,i)=>{const po=PO_WEEKS.includes(w),x=L+cw*i;
+    if(po)g+=`<rect x="${x}" y="2" width="${cw}" height="${H-2}" rx="4" fill="#F2D82E" opacity=".07"/>`;
+    g+=`<text x="${C.fx(x+cw/2)}" y="${T-8}" fill="${po?'#F2D82E':C.MUTED}" font-size="9.5" font-weight="${po?700:400}" text-anchor="middle">s${w}${po?' PO':''}</text>`});
+  let prev=null;
+  ros.forEach((p,j)=>{const y=T+j*rh;
+    if(prev&&prev!==p.pos)g+=`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="${C.GRID}"/>`;prev=p.pos;
+    g+=`<text x="${L-8}" y="${y+rh/2+4}" fill="${C.INK}" font-size="11" text-anchor="end" data-pid="${p.id}">${esc(p.name)}<tspan fill="${C.MUTED}" font-size="9.5"> ${p.pos} · ${p.nfl}</tspan></text>`;
+    weeks.forEach((w,i)=>{const x=L+cw*i,o=(SCHED[p.nfl]||{}).opp,opp=o?(o[w]||o[String(w)]):null;
+      const f=opp?(FPA[opp.replace('@','')]||{})[p.pos]:null,bye=p.bye===w;
+      g+=`<rect x="${x+2}" y="${y+2}" width="${cw-4}" height="${rh-4}" rx="3" fill="${bye?'transparent':col(f)}" stroke="${bye?'#3A4654':'none'}" stroke-dasharray="${bye?'3 3':''}" data-tip="${C.attr(p.name+' · settimana '+w)}|${bye?'bye':opp?(opp.startsWith('@')?'a ':'contro ')+opp.replace('@','')+': concede '+(f!=null?f.toFixed(2)+' volte la media ai '+p.pos:'—'):'—'}"/>`;
+      g+=`<text x="${C.fx(x+cw/2)}" y="${y+rh/2+3.5}" fill="${bye?C.MUTED:C.INK}" font-size="9.5" text-anchor="middle" pointer-events="none">${bye?'bye':opp?esc(opp):'—'}</text>`});
+  });
+  el.innerHTML=`<div style="overflow-x:auto">${C.svg(W,H,g,'Calendario dei tuoi giocatori').replace('width:100%','width:100%;max-width:'+W+'px;min-width:'+Math.round(W*0.85)+'px')}</div>`;
+}
 function renderSchedule(){
+  mySchedule();
   const pos=P2.sdPos,win=P2.sdWin;
   const sn=$('#sd-note');if(sn)sn.textContent=`Stagione regolare fino alla ${RULES.regWeeks||15}ª · playoff di lega nelle settimane ${PO_WEEKS.join(' e ')} (${RULES.poTeams||4} squadre) · difese: ${Math.round(FPA_W*100)}% 2026, ${Math.round((1-FPA_W)*100)}% 2025`;
   const teams=Object.keys(SCHED).sort();

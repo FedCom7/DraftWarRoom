@@ -68,6 +68,8 @@ function renderMatchup(){
       ${met.length?met.map(g=>{const mine=g.h===MY?g.hp:g.ap,their=g.h===MY?g.ap:g.hp;return`<div class="kv"><span>settimana ${g.w}</span><b style="color:${mine>their?'var(--live)':'var(--offline)'}">${n1(mine)} – ${n1(their)}</b></div>`}).join(''):'<div class="kv"><span>precedenti</span><b>nessuno</b></div>'}
       <div class="verd">Scontri diretti di sempre nella pagina Storico.</div></div>`;
   slotChart(me.L.rows,ot.L.rows);
+  distChart(margin,sd,p,opp);
+  raceChart(me.L.rows,ot.L.rows,opp);
   $('#mu-table').innerHTML=`<thead><tr><th>Slot</th><th>${esc(TBY.get(MY).abbr)}</th><th class="num">Attesi</th><th class="num">Δ</th><th class="num">Attesi</th><th>${esc(TBY.get(opp).abbr)}</th></tr></thead><tbody>`+
     me.L.rows.map((r,i)=>{
       const o=ot.L.rows[i],a=r.x?r.x.pts:0,b=o&&o.x?o.x.pts:0,d=a-b;
@@ -94,6 +96,63 @@ function renderMatchup(){
       <td class="num" style="color:${r.prob==null?'var(--k-muted)':r.prob>=0.6?'var(--live)':r.prob<=0.4?'var(--offline)':'var(--k-ink)'}">${r.prob==null?'—':Math.round(r.prob*100)+'%'}</td></tr>`).join('')+'</tbody>';
 }
 
+/* distribuzione dello scarto finale: normale centrata sul margine atteso */
+function distChart(m,sd,p,opp){
+  const C=window.DWRC,el=$('#mu-dist');if(!el||!C)return;
+  const W=C.wOf(el,560),H=210,L=14,R=14,T=26,B=34;
+  const lo=Math.min(-60,m-3*sd),hi=Math.max(60,m+3*sd);
+  const x=v=>L+(v-lo)/(hi-lo)*(W-L-R);
+  const peak=C.npdf(m,m,sd),y=v=>H-B-v/peak*(H-B-T);
+  const pts=[];for(let i=0;i<=120;i++){const v=lo+(hi-lo)*i/120;pts.push([v,C.npdf(v,m,sd)])}
+  const area=(f)=>{const a=pts.filter(([v])=>f(v));if(!a.length)return'';
+    return`M${C.fx(x(a[0][0]))} ${C.fx(y(0))} `+a.map(([v,d])=>`L${C.fx(x(v))} ${C.fx(y(d))}`).join(' ')+` L${C.fx(x(a[a.length-1][0]))} ${C.fx(y(0))} Z`};
+  const cMe=C.TEAMCOL[MY],cOp=C.TEAMCOL[opp]||'#7C8996';
+  let g='';
+  C.niceTicks(lo,hi,6).forEach(v=>{g+=`<line x1="${C.fx(x(v))}" y1="${T}" x2="${C.fx(x(v))}" y2="${H-B}" stroke="${C.GRID}"/><text x="${C.fx(x(v))}" y="${H-B+14}" fill="${C.MUTED}" font-size="9.5" text-anchor="middle">${v>0?'+':''}${v}</text>`});
+  g+=`<path d="${area(v=>v<=0)}" fill="${cOp}" opacity=".55"/><path d="${area(v=>v>=0)}" fill="${cMe}" opacity=".7"/>`;
+  g+=`<path d="${pts.map(([v,d],i)=>`${i?'L':'M'}${C.fx(x(v))} ${C.fx(y(d))}`).join(' ')}" fill="none" stroke="${C.INK}" stroke-width="1.5" opacity=".6"/>`;
+  g+=`<line x1="${C.fx(x(0))}" y1="${T-6}" x2="${C.fx(x(0))}" y2="${H-B}" stroke="${C.INK}" stroke-width="1.5"/>`;
+  g+=`<line x1="${C.fx(x(m))}" y1="${C.fx(y(peak))}" x2="${C.fx(x(m))}" y2="${H-B}" stroke="${C.INK}" stroke-dasharray="3 3" opacity=".7"/>`;
+  g+=`<text x="${C.fx(x(m))}" y="${T-10}" fill="${C.INK}" font-size="10.5" text-anchor="middle">margine atteso ${m>0?'+':''}${n1(m)}</text>`;
+  const sMe=x(Math.max(0,m+sd*0.9)),sOp=x(Math.min(0,m-sd*0.9));
+  g+=`<text x="${C.fx(Math.min(W-R-4,sMe))}" y="${H-B-18}" fill="${C.INK}" font-size="12" font-weight="700" text-anchor="middle">${Math.round(p*100)}% tu</text>`;
+  g+=`<text x="${C.fx(Math.max(L+40,sOp))}" y="${H-B-18}" fill="${C.INK}" font-size="12" font-weight="700" text-anchor="middle">${Math.round((1-p)*100)}% ${esc(TBY.get(opp).abbr)}</text>`;
+  g+=`<text x="${W/2}" y="${H-4}" fill="${C.MUTED}" font-size="9.5" text-anchor="middle">scarto finale (tuoi punti − suoi)</text>`;
+  /* fasce cliccabili per il tooltip */
+  [[-1e9,-20,'perdi di più di 20'],[-20,0,'perdi di meno di 20'],[0,20,'vinci di meno di 20'],[20,1e9,'vinci di più di 20']].forEach(([a,b,l])=>{
+    const Phi=D.Phi,pr=Phi((Math.min(b,hi)-m)/sd)-Phi((Math.max(a,lo)-m)/sd),xa=x(Math.max(a,lo)),xb=x(Math.min(b,hi));
+    g+=`<rect x="${C.fx(xa)}" y="${T}" width="${C.fx(xb-xa)}" height="${H-B-T}" fill="transparent" data-tip="${C.attr(l)}|${Math.round(pr*100)}% di probabilità"/>`});
+  el.innerHTML=C.svg(W,H,g,'Distribuzione dello scarto finale');
+}
+/* punti attesi cumulati lungo il weekend, partita dopo partita */
+function raceChart(mine,theirs,opp){
+  const C=window.DWRC,el=$('#mu-race');if(!el||!C)return;
+  const kick=p=>{const g=((TOP.games||{})[p.nfl]||{})[String(WEEK)];const k=g&&g.kick;return k?new Date(/T\d\d:\d\dZ$/.test(k)?k.replace('Z',':00Z'):k).getTime():null};
+  const ents=[...mine.map(r=>({r,side:'me'})),...theirs.map(r=>({r,side:'op'}))].filter(e=>e.r&&e.r.x&&e.r.x.pts>0).map(e=>({...e,k:kick(e.r.x.p)})).filter(e=>e.k);
+  const slots=[...new Set(ents.map(e=>e.k))].sort((a,b)=>a-b);
+  if(!slots.length){el.innerHTML='<p class="cn">Orari delle partite non disponibili.</p>';return}
+  const cum={me:[0],op:[0]};
+  slots.forEach(k=>['me','op'].forEach(sd=>cum[sd].push(cum[sd][cum[sd].length-1]+ents.filter(e=>e.side===sd&&e.k===k).reduce((s,e)=>s+e.r.x.pts,0))));
+  const W=C.wOf(el,560),H=220,L=40,R=70,T=14,B=40,n=slots.length;
+  const X=i=>L+i/n*(W-L-R);
+  const max=Math.max(...cum.me,...cum.op)*1.08,Y=v=>H-B-v/max*(H-B-T);
+  const cMe=C.TEAMCOL[MY],cOp=C.TEAMCOL[opp]||'#7C8996';
+  let g=C.yGrid(L,R,W,Y,C.niceTicks(0,max,4),v=>v);
+  const lab=k=>new Date(k).toLocaleString('it-IT',{weekday:'short',hour:'2-digit',minute:'2-digit'});
+  slots.forEach((k,i)=>{g+=`<text x="${C.fx(X(i+1))}" y="${H-B+14}" fill="${C.MUTED}" font-size="9" text-anchor="middle">${lab(k).split(' ')[0]}</text><text x="${C.fx(X(i+1))}" y="${H-B+25}" fill="${C.MUTED}" font-size="9" text-anchor="middle">${lab(k).split(' ').slice(1).join(' ')}</text>`});
+  [['op',cOp],['me',cMe]].forEach(([sd,c])=>{
+    let d=`M${C.fx(X(0))} ${C.fx(Y(0))}`;
+    cum[sd].slice(1).forEach((v,i)=>{d+=` L${C.fx(X(i+1))} ${C.fx(Y(cum[sd][i]))} L${C.fx(X(i+1))} ${C.fx(Y(v))}`});
+    g+=`<path d="${d}" fill="none" stroke="${c}" stroke-width="2" stroke-linejoin="round"/>`;
+    cum[sd].slice(1).forEach((v,i)=>{const who=ents.filter(e=>e.side===sd&&e.k===slots[i]);
+      g+=`<circle cx="${C.fx(X(i+1))}" cy="${C.fx(Y(v))}" r="4.5" fill="${c}" stroke="${C.SURF}" stroke-width="2"/>`;
+      g+=`<circle cx="${C.fx(X(i+1))}" cy="${C.fx(Y(v))}" r="12" fill="transparent" data-tip="${C.attr((sd==='me'?'Tu':TBY.get(opp).name)+' · '+lab(slots[i]))}|${n1(v)} punti attesi in totale${who.length?'|entrano: '+C.attr(who.map(e=>e.r.x.p.name.split(' ').slice(-1)[0]+' '+n1(e.r.x.pts)).join(', ')):''}"/>`});
+    const lv=cum[sd][cum[sd].length-1];
+    g+=`<text x="${C.fx(X(n)+8)}" y="${C.fx(Y(lv)+(sd==='me'?(lv>=cum.op[n]?-2:10):(lv>cum.me[n]?-2:10)))}" fill="${C.INK}" font-size="10.5" font-weight="600">${sd==='me'?'tu':esc(TBY.get(opp).abbr)} ${n1(lv)}</text>`;
+  });
+  el.innerHTML=C.svg(W,H,g,'Punti attesi cumulati durante il weekend');
+  $('#mu-race-lg').innerHTML=`<span><i style="background:${cMe}"></i>tu</span><span><i style="background:${cOp}"></i>${esc(TBY.get(opp).name)}</span>`;
+}
 function slotChart(mine,theirs){
   const W=860,L=76,R=64,T=10,rowH=26,H=T+mine.length*rowH+22;
   const max=Math.max(...mine.concat(theirs).map(r=>r&&r.x?r.x.pts:0),10)*1.08;
@@ -277,7 +336,7 @@ function curveChart(){
       const gap=off!=null&&Math.abs(off-mine)>=0.5;
       return`<span><i style="background:${SELCOL[i%SELCOL.length]}"></i>${esc(s.p?s.p.name:s.id)} · ${n1(off!=null?off:mine)} punti${st.state==='in'?` <b style="color:var(--live)">in campo ${esc(st.detail||'')}</b>`:st.state==='pre'?' · non ha ancora giocato':''}${gap?` <span style="color:#5C6874">(curva ${n1(mine)})</span>`:''}</span>`}).join('')
     +'<span style="color:#5C6874">pallini grandi: touchdown · tratteggio: partita non iniziata · la curva è ricostruita dalle giocate</span>';
-  const W=880,H=300,L=40,R=86,T=16,B=32;   // margine destro per le etichette
+  const W=window.DWRC?window.DWRC.wOf(wrap,880):880,H=240,L=40,R=86,T=16,B=32;   // margine destro per le etichette
   const maxY=Math.max(12,...sel.flatMap(s=>s.c.map(e=>e[1])))*1.1;
   const maxX=Math.max(3600,...sel.flatMap(s=>s.c.map(e=>e[0])));
   const x=v=>L+v/maxX*(W-L-R),y=v=>H-B-Math.max(0,v)/maxY*(H-B-T);
@@ -375,8 +434,28 @@ function tradeIdeas(rival,minGain){
   if(ok.length)return{list:ok,fallback:false};
   return{list:all.filter(t=>t.gMe>0).sort((x,y)=>(y.gMe+y.gThem)-(x.gMe+x.gThem)).slice(0,6),fallback:true};
 }
+function tradeDots(){
+  const C=window.DWRC,el=$('#tr-dots');if(!el||!C)return;
+  const rp=M.restPPG,POSS=[['QB',1],['RB',2],['WR',2],['TE',1]],ids=[1,2,3,4];
+  const val={};ids.forEach(t=>{val[t]={};POSS.forEach(([pos,n])=>{const l=rosterOfTeam(t).filter(p=>p.pos===pos).map(p=>({p,v:rp(p)})).sort((a,b)=>b.v-a.v);
+    val[t][pos]={st:l.slice(0,n),be:l[n]||null,v:l.slice(0,n).reduce((s,x)=>s+x.v,0)/n}})});
+  const max=Math.max(...ids.flatMap(t=>POSS.map(([pos])=>Math.max(val[t][pos].v,val[t][pos].be?val[t][pos].be.v:0))))*1.08;
+  const W=C.wOf(el,560),L=46,R=16,T=10,rh=40,H=T+POSS.length*rh+22,X=v=>L+v/max*(W-L-R);
+  let g='';
+  C.niceTicks(0,max,5).forEach(v=>{g+=`<line x1="${C.fx(X(v))}" y1="${T}" x2="${C.fx(X(v))}" y2="${H-22}" stroke="${C.GRID}"/><text x="${C.fx(X(v))}" y="${H-8}" fill="${C.MUTED}" font-size="9.5" text-anchor="middle">${v}</text>`});
+  POSS.forEach(([pos,n],i)=>{const y=T+i*rh+rh/2;
+    g+=`<text x="${L-10}" y="${y+4}" fill="${C.INK}" font-size="11" font-weight="600" text-anchor="end">${pos}</text>`;
+    g+=`<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="${C.GRID}" stroke-dasharray="2 3"/>`;
+    ids.forEach((t,k)=>{const o=val[t][pos],c=C.TEAMCOL[t],dy=(k-1.5)*6;
+      if(o.be)g+=`<circle cx="${C.fx(X(o.be.v))}" cy="${C.fx(y+dy)}" r="3.5" fill="none" stroke="${c}" stroke-width="1.5" data-tip="${C.attr(TBY.get(t).name+' · '+pos+' di riserva')}|${C.attr(o.be.p.name)}: ${n1(o.be.v)} a giornata"/>`;
+      g+=`<circle cx="${C.fx(X(o.v))}" cy="${C.fx(y+dy)}" r="${t===MY?7:6}" fill="${c}" stroke="${C.SURF}" stroke-width="2" data-tip="${C.attr(TBY.get(t).name+' · '+pos+' titolar'+(n>1?'i':'e'))}|${n1(o.v)} a giornata${n>1?' (media dei '+n+')':''}|${C.attr(o.st.map(x=>x.p.name+' '+n1(x.v)).join(', ')||'nessuno')}"/>`;
+    });
+  });
+  el.innerHTML=C.svg(W,H,g,'Valore dei reparti per squadra');
+  $('#tr-dots-lg').innerHTML=ids.map(t=>`<span><i style="background:${C.TEAMCOL[t]};border-radius:50%"></i>${esc(TBY.get(t).name)}</span>`).join('')+'<span>pieno: titolari · vuoto: primo panchinaro</span>';
+}
 function renderTrades(){
-  WPC.clear();
+  WPC.clear();tradeDots();
   { const R0=TOP.rules||{},dl=R0.tradeDeadline,el=$('#tr-deadline');
     if(el&&dl){const d=new Date(dl),days=Math.ceil((dl-Date.now())/864e5);
       el.innerHTML=days>0?`<b style="color:${days<=7?'var(--offline)':'var(--delayed)'}">Scadenza scambi: ${d.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long'})} alle ${d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})} · mancano ${days} giorni</b>${R0.vetoVotes?` · basta ${R0.vetoVotes} voto per bloccarlo`:''}`
@@ -438,6 +517,31 @@ function ptsWinsScatter(closed){
   s+=`<text x="${W-R}" y="${T+2}" fill="#7C8996" font-size="9" text-anchor="end">asse verticale: vittorie</text>`;
   $('#hi-scatter').innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Punti contro vittorie">${s}</svg>`;
 }
+function histDist(done){
+  const C=window.DWRC,el=$('#hi-dist');if(!el||!C)return;
+  const HW=TOP.histWeekly||{},keys=['sommo','oscurus','lasers','capi'],TID={sommo:3,oscurus:1,lasers:2,capi:4};
+  const past={},now={};
+  keys.forEach(k=>{past[k]=[];Object.entries(HW[k]||{}).forEach(([y,wk])=>Object.entries(wk).forEach(([w,v])=>{if(v)past[k].push({y,w,v})}));
+    now[k]=[];done.forEach(g=>{if(MKEY[g.h]===k)now[k].push({w:g.w,v:g.hp});if(MKEY[g.a]===k)now[k].push({w:g.w,v:g.ap})})});
+  const all=keys.flatMap(k=>[...past[k],...now[k]].map(x=>x.v));
+  const lo=Math.floor(Math.min(...all)/10)*10,hi=Math.ceil(Math.max(...all)/10)*10;
+  const W=C.wOf(el,880),L=130,R=150,T=8,rh=40,H=T+keys.length*rh+24,X=v=>L+(v-lo)/(hi-lo)*(W-L-R);
+  const q=(a,p)=>{const s=[...a].sort((x,y)=>x-y),i=(s.length-1)*p,f=Math.floor(i);return s[f]+(s[Math.ceil(i)]-s[f])*(i-f)};
+  let g='';
+  C.niceTicks(lo,hi,8).forEach(v=>{g+=`<line x1="${C.fx(X(v))}" y1="${T}" x2="${C.fx(X(v))}" y2="${H-24}" stroke="${C.GRID}"/><text x="${C.fx(X(v))}" y="${H-10}" fill="${C.MUTED}" font-size="9.5" text-anchor="middle">${v}</text>`});
+  keys.forEach((k,i)=>{const y=T+i*rh+rh/2,c=C.TEAMCOL[TID[k]],pv=past[k].map(x=>x.v);
+    g+=`<text x="${L-12}" y="${y+4}" fill="${C.INK}" font-size="11.5" font-weight="${k==='sommo'?700:500}" text-anchor="end">${esc(NAME[k])}</text>`;
+    if(pv.length){const a=q(pv,.25),b=q(pv,.75),m=q(pv,.5);
+      g+=`<rect x="${C.fx(X(a))}" y="${y-12}" width="${C.fx(X(b)-X(a))}" height="24" rx="4" fill="#E8EDF2" opacity=".07"/>`;
+      g+=`<line x1="${C.fx(X(m))}" y1="${y-14}" x2="${C.fx(X(m))}" y2="${y+14}" stroke="${C.INK}" stroke-width="2"/>`;
+      past[k].forEach((x,j)=>{g+=`<circle cx="${C.fx(X(x.v))}" cy="${C.fx(y+((j*37)%17-8)*0.9)}" r="2.6" fill="#7C8996" opacity=".45" data-tip="${C.attr(NAME[k]+' · '+x.y+' s'+x.w)}|${n1(x.v)} punti"/>`});
+      now[k].forEach(x=>{g+=`<circle cx="${C.fx(X(x.v))}" cy="${y}" r="5" fill="${c}" stroke="${C.SURF}" stroke-width="2" data-tip="${C.attr(NAME[k]+' · '+TOP.season+' s'+x.w)}|${n1(x.v)} punti"/>`});
+      const m6=now[k].length?now[k].reduce((s,x)=>s+x.v,0)/now[k].length:null;
+      g+=`<text x="${W-R+12}" y="${y-2}" fill="${C.INK}" font-size="10.5">mediana ${n0(m)}${m6!=null?` · ${TOP.season} ${n0(m6)}`:''}</text>`;
+      g+=`<text x="${W-R+12}" y="${y+12}" fill="${C.MUTED}" font-size="9.5">sopra 160: ${Math.round(pv.filter(v=>v>=160).length/pv.length*100)}% delle giornate</text>`;
+    }});
+  el.innerHTML=C.svg(W,H,g,'Distribuzione dei punteggi settimanali');
+}
 function renderHistory(){
   const years=Object.keys(HI.seasons).map(Number).sort();
   const closed=years.filter(y=>y<TOP.season);
@@ -473,6 +577,7 @@ function renderHistory(){
         <td class="num">${n1(v.ppg)}</td><td class="num">${n1(v.best)}</td><td class="num">${v.live?'—':`${v.pw||0}-${v.pl||0}`}</td></tr>`})).join('')+'</tbody>';
 
   ptsWinsScatter(closed);
+  histDist(done);
   // punti a gara per stagione
   const W=520,H=250,L=42,Rr=54,T=14,B=26;
   const keys=Object.keys(all);
