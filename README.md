@@ -126,7 +126,11 @@ Nota sulle proiezioni: in stagione il campo `proj` di ESPN è la proiezione **su
 della stagione NFL** (fino alla 18ª), non sull'intera stagione. A gara si divide per le
 partite che restano al giocatore (`window.DWR_PPG`), non per 17.
 
-## Struttura delle pagine (`web/parts/pS_ui.html`)
+## Struttura delle pagine (`web/parts/pS_css.html`, `web/parts/pS_ui.html`)
+
+Gli stili comuni stanno in `pS_css.html`, caricato in testa: i grafici misurano la loro
+card quando si disegnano, quindi la griglia deve essere già nota. `pS_ui.html` ha solo lo
+script del taglio delle tabelle lunghe.
 
 Sotto i 1100px le griglie diventano a una colonna; le tabelle che scorrono in
 orizzontale tengono fisso il nome; le tabelle lunghe (`data-clip="N"`) mostrano le prime

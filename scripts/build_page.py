@@ -14,7 +14,7 @@ PARTS = os.path.join(ROOT, "web", "parts")
 ASSETS = os.path.join(ROOT, "data", "build", "console-assets")
 
 ORDER = [
-    "p1_head.html", "p2_ccss.html", "pA_css.html",
+    "p1_head.html", "p2_ccss.html", "pA_css.html", "pS_css.html",
     "p3_plan_a.html", "p3b_topina.html", "p4_plan_b.html", "p5_plan_c.html",
     "p6_plan_d.html", "p7_plan_e.html",
     "p8_console.html", "pB_views.html", "pE_views.html", "pF_views.html",

@@ -1,0 +1,35 @@
+<style>
+/* ===== struttura comune delle pagine di analisi =====
+   1. sotto i 1100px le griglie a più colonne diventano una sola: le tabelle larghe non si schiacciano
+   2. le tabelle che scorrono in orizzontale tengono fisso il nome a sinistra
+   3. niente riquadri con scroll interno: le tabelle lunghe mostrano le prime righe e un "mostra tutte" */
+@media (max-width:1100px){
+  .console .an-grid{grid-template-columns:minmax(0,1fr)!important}
+  .subnav{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
+  .subnav button{white-space:nowrap;flex:0 0 auto}
+}
+.subnav button{padding:5px 9px}
+.console .tscroll{overflow-x:auto}
+.console .chartcard div[style*="max-height"]{max-height:none!important}
+.console .tscroll>table.antable>*>tr>:first-child,
+.console div[style*="overflow"]>table.antable>*>tr>:first-child{position:sticky;left:0;z-index:1;background:var(--k-p)}
+.console .tscroll>table.antable>thead>tr>:first-child,
+.console div[style*="overflow"]>table.antable>thead>tr>:first-child{z-index:3}
+.console .tscroll>table.antable>tbody>tr.mine>:first-child,
+.console div[style*="overflow"]>table.antable>tbody>tr.mine>:first-child{background:color-mix(in srgb,var(--k-me) 8%,var(--k-p))}
+.console .an-grid.tm4{grid-template-columns:repeat(4,minmax(0,1fr))}
+@media (max-width:1180px){.console .an-grid.tm4{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media (max-width:640px){.console .an-grid.tm4{grid-template-columns:minmax(0,1fr)!important}}
+.console .rd-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:10px}
+.console .rd-p{background:var(--k-bg);border:1px solid var(--k-line);border-radius:8px;padding:10px 12px;min-width:0}
+.console .rd-p h4{margin:0 0 6px;font:600 12.5px var(--sans);color:var(--k-ink)}
+.console .rd-t{margin:8px 0 0;font-size:12px;line-height:1.5;color:var(--k-muted)}
+.console .rd-t b{color:var(--k-ink)}
+.console .inj-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:8px;align-items:center;padding:5px 0;border-bottom:1px solid #18202A;font-size:12.5px}
+.console .clipbtn{display:block;margin:8px auto 0;font-size:12px}
+/* seconda riga sotto al nome (segnali, motivi): al posto di una colonna larghissima */
+.console .sub2{display:block;margin-top:3px;white-space:normal;line-height:1.7;max-width:62ch}
+.console .sub2 .tag2{margin:0 3px 0 0}
+.console .linkcard{display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.console .linkcard a,.console a.btnlink{font:600 12.5px var(--sans);color:#111;background:var(--k-y);border-radius:6px;padding:6px 12px;text-decoration:none;white-space:nowrap}
+</style>

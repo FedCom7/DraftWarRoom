@@ -53,6 +53,26 @@
   </div>
 
   <div class="chartcard" style="margin-bottom:10px">
+    <h3>Utilizzo dei giocatori e forza delle squadre NFL</h3>
+    <p class="cn">Quanto i punti di ogni squadra fantasy vengono dal volume dei suoi titolari (opportunità: target + corse per RB, WR e TE; passaggi tentati per i QB), da quanto sono efficienti (punti per opportunità) e da quanto segnano le squadre NFL in cui giocano. Contano solo i titolari, sulle giornate scelte in alto. "Attacco NFL/g": quanto segnano in media in stagione le squadre NFL dei titolari; "NFL in partita": quanto hanno segnato davvero nelle partite in cui li hai schierati. "Dip.": correlazione giornata per giornata fra i punti fantasy e il volume, o i punti degli attacchi NFL.</p>
+    <div class="tscroll"><table class="antable" id="ut-tab"></table></div>
+    <ul class="wv-read" id="ut-read" style="margin:10px 0 0;padding-left:18px;font-size:12.5px;line-height:1.55"></ul>
+  </div>
+  <div class="an-grid" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);margin-bottom:10px">
+    <div class="chartcard">
+      <h3>Più utilizzo, più punti?</h3>
+      <p class="cn">Ogni pallino è una giornata di una squadra: opportunità totali dei suoi RB, WR e TE titolari contro i punti fantasy della squadra. La linea tratteggiata è l'andamento di tutta la lega; r è la correlazione (1 = legame perfetto, 0 = nessun legame).</p>
+      <div class="chartwrap" id="ut-sc1"></div>
+      <div class="legend2" id="ut-sc1-lg"></div>
+    </div>
+    <div class="chartcard">
+      <h3>Più segnano le squadre NFL, più punti?</h3>
+      <p class="cn">Stessi pallini, ma in orizzontale la media dei punti segnati quella giornata dalle squadre NFL dei titolari: dice quanto il punteggio fantasy dipende dalla giornata degli attacchi veri.</p>
+      <div class="chartwrap" id="ut-sc2"></div>
+      <div class="legend2" id="ut-sc2-lg"></div>
+    </div>
+  </div>
+  <div class="chartcard" style="margin-bottom:10px">
     <h3>Volume di gioco</h3>
     <p class="cn">Le statistiche dei giocatori schierati (o in panchina) da ogni squadra, sommate. % presa: ricezioni sui target. RZ: target e corse dentro le 20 yard avversarie.</p>
     <div class="an-bar" style="margin:0 0 8px;background:transparent;border:0;padding:0"><div class="chips" id="ss-per"></div><div class="chips" id="ss-cg"></div></div>

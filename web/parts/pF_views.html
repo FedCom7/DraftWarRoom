@@ -41,6 +41,31 @@
   </div>
   </div>
   <div class="chartcard" style="margin-top:10px">
+    <h3>Utilizzo e rendimento, partita per partita</h3>
+    <p class="cn">Scegli un giocatore e una misura: in alto la misura partita per partita, in mezzo i suoi punti fantasy, in basso i punti segnati dalla sua squadra NFL in quella partita. La linea è la media, la fascia è media ± una deviazione standard: più è larga, più il dato è ballerino. Le statistiche vengono da ESPN, poi Sleeper, poi nflverse.</p>
+    <div class="an-bar" style="margin:0 0 8px;background:transparent;border:0;padding:0">
+      <label>Giocatore <select id="us-p"></select></label>
+      <div class="chips" id="us-m"></div>
+    </div>
+    <div class="an-grid" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)">
+      <div><div class="chartwrap" id="us-ts"></div></div>
+      <div>
+        <h3 style="font-size:12.5px">Cosa muove i suoi punti</h3>
+        <p class="cn">Correlazione partita per partita fra ogni misura e i suoi punti fantasy: verso destra (fino a 1) i punti salgono quando sale quella misura, intorno a zero non c'entra. Con poche partite va letta come una tendenza, non come una legge.</p>
+        <div class="chartwrap" id="us-cor"></div>
+        <ul class="wv-read" id="us-read" style="margin-top:8px;padding-left:18px;font-size:12.5px;line-height:1.5"></ul>
+        <h3 style="font-size:12.5px;margin-top:12px">Utilizzo contro punti, tutta la lega</h3>
+        <p class="cn">Ogni pallino è un RB, WR o TE nelle rose della lega: opportunità a partita contro punti a partita. La linea è quanto rende in media un'opportunità: sopra è più efficiente del suo volume (spesso TD, da prendere con cautela), sotto il volume c'è ma i punti non ancora. I tuoi sono in blu.</p>
+        <div class="chartwrap" id="us-sc"></div>
+      </div>
+    </div>
+  </div>
+  <div class="chartcard" style="margin-top:10px">
+      <h3>Media e varianza dell'utilizzo · tutta la rosa</h3>
+      <p class="cn">Per ogni misura la media a partita e, sotto, lo scarto tipico (±). "Dipende dall'utilizzo" e "dipende dalla squadra" sono le correlazioni dei suoi punti con le opportunità (target + corse, o passaggi + corse per i QB) e con i punti segnati dalla sua squadra NFL. Le partite saltate non contano. Tocca una riga per vederla nel grafico sopra.</p>
+      <div class="tscroll"><table class="antable" id="us-tab"></table></div>
+  </div>
+  <div class="chartcard" style="margin-top:10px">
     <h3>Salute della rosa · chi sta rendendo e chi no</h3>
     <p class="cn">“ESPN/g” è la proiezione ESPN sul resto della stagione divisa per le partite che restano. Il volume conta più dei punti: target share e corse per gara spiegano il rendimento futuro molto meglio dei touchdown già segnati.</p>
     <div class="tscroll"><table class="antable" id="mt-roster"></table></div>
@@ -51,15 +76,16 @@
     <a href="#waiver" data-view="waiver">Apri Waiver →</a>
   </div>
 
-  <div class="an-grid" style="margin-top:10px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
-    <div class="chartcard">
-      <h3>Da cui si può prescindere</h3>
-      <p class="cn">I tuoi giocatori con meno valore atteso: sono i posti liberi per un waiver. Un titolare non compare mai qui.</p>
-      <div style="overflow-x:auto"><table class="antable" id="mt-drop"></table></div>
-    </div>
-    <div class="chartcard">
-      <h3>Lettura della squadra</h3>
-      <div class="verdict2" style="border:0;padding:0"><ul id="mt-read"></ul></div>
+  <div class="chartcard" style="margin-top:10px">
+    <h3>Lettura della squadra</h3>
+    <p class="cn">Le cose da sapere sulla tua rosa, ognuna con il suo grafico. Passa sui grafici per i numeri, tocca un nome per la scheda del giocatore.</p>
+    <div class="rd-grid">
+      <div class="rd-p"><h4>Reparti contro il resto della lega</h4><div class="chartwrap" id="rd-units"></div><p class="rd-t" id="rd-units-t"></p></div>
+      <div class="rd-p"><h4>Sopra e sotto la proiezione ESPN</h4><div class="chartwrap" id="rd-proj"></div><p class="rd-t" id="rd-proj-t"></p></div>
+      <div class="rd-p"><h4>Calendario delle prossime tre giornate</h4><div class="chartwrap" id="rd-sos"></div><p class="rd-t" id="rd-sos-t"></p></div>
+      <div class="rd-p"><h4>Volume o touchdown</h4><div class="chartwrap" id="rd-td"></div><p class="rd-t" id="rd-td-t"></p></div>
+      <div class="rd-p"><h4>Infermeria</h4><div id="rd-inj"></div><p class="rd-t" id="rd-inj-t"></p></div>
+      <div class="rd-p"><h4>Da cui si può prescindere</h4><div style="overflow-x:auto"><table class="antable" id="mt-drop"></table></div><p class="rd-t">I tuoi giocatori con meno valore atteso nelle prossime giornate: sono i posti liberi per un waiver. Un titolare non compare mai qui.</p></div>
     </div>
   </div>
 </div>
